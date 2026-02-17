@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>04 — DWM / Suckless Minimal Desktop Setup (OpenRC)</title>
+<style>
+  :root { --bg: #fff; --fg: #1a1a1a; --muted: #555; --border: #d0d0d0;
+          --code-bg: #f4f4f4; --accent: #4e4187; }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { font-size: 15px; }
+  body { font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+         color: var(--fg); background: var(--bg);
+         max-width: 52rem; margin: 2rem auto; padding: 0 1.5rem;
+         line-height: 1.6; }
+  h1 { font-size: 1.8rem; border-bottom: 2px solid var(--accent); padding-bottom: .4rem; }
+  h2 { font-size: 1.35rem; margin-top: 2rem; color: var(--accent); }
+  h3 { font-size: 1.1rem; margin-top: 1.4rem; }
+  blockquote { border-left: 4px solid var(--accent); margin: 1rem 0;
+               padding: .5rem 1rem; background: #f9f8ff; color: var(--muted); }
+  code { font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+         font-size: .88em; background: var(--code-bg); padding: .15em .35em;
+         border-radius: 3px; }
+  pre { background: var(--code-bg); border: 1px solid var(--border);
+        border-radius: 5px; padding: 1rem; overflow-x: auto;
+        line-height: 1.45; }
+  pre code { background: none; padding: 0; font-size: .85rem; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { border: 1px solid var(--border); padding: .45rem .75rem; text-align: left; }
+  th { background: var(--code-bg); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+  a { color: var(--accent); }
+  .nav { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border);
+         font-size: .9rem; }
+  @media print {
+    body { max-width: 100%; margin: 0; padding: 0; font-size: 11pt; }
+    pre { white-space: pre-wrap; word-break: break-all; border: 1px solid #ccc; }
+    a { color: inherit; text-decoration: none; }
+    h2 { page-break-after: avoid; }
+    pre, table { page-break-inside: avoid; }
+    .nav { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>DWM / Suckless Minimal Desktop Setup (OpenRC)</h1>
+
+<blockquote>
+Prerequisite: complete <a href="01-post-install-base.html">01-post-install-base</a> first.
+Your make.conf should already have the <strong>dwm</strong> profile's USE flags (including <code>savedconfig</code>).
+</blockquote>
+
+<hr>
+
+<h2>make.conf — DWM / suckless profile</h2>
+
+<pre><code># /etc/portage/make.conf — DWM / suckless minimal desktop
+# Hardware: AMD Ryzen 9 9800X3D · RX 7800 XT · X870 Taichi Lite · DVD reader
+# Init: OpenRC
+# ------------------------------------------------------------------
+
+# ── Compiler flags (Zen 5) ──────────────────────────────────────────
+COMMON_FLAGS="-march=native -O2 -pipe"
+CFLAGS="${COMMON_FLAGS}"
+CXXFLAGS="${COMMON_FLAGS}"
+FCFLAGS="${COMMON_FLAGS}"
+FFLAGS="${COMMON_FLAGS}"
+
+# ── CPU FLAGS (inserted by setup-makeconf.sh) ───────────────────────
+CPU_FLAGS_X86="&lt;run cpuid2cpuflags to populate&gt;"
+
+# ── Parallelism (8C / 16T) ─────────────────────────────────────────
+MAKEOPTS="-j16 -l16"
+EMERGE_DEFAULT_OPTS="--jobs=4 --load-average=16 --with-bdeps=y --keep-going"
+
+# ── Portage behaviour ──────────────────────────────────────────────
+FEATURES="candy fixlafiles unmerge-orphans parallel-fetch"
+ACCEPT_LICENSE="-* @FREE @BINARY-REDISTRIBUTABLE"
+ACCEPT_KEYWORDS="amd64"
+
+# ── Hardware ────────────────────────────────────────────────────────
+VIDEO_CARDS="amdgpu radeonsi"
+INPUT_DEVICES="libinput"
+GRUB_PLATFORMS="efi-64"
+
+# ── Locale ──────────────────────────────────────────────────────────
+L10N="en"
+LINGUAS="en"
+LC_MESSAGES=C.utf8
+
+# ── Global USE — DWM suckless minimal ──────────────────────────────
+# X11 only (no Wayland in vanilla suckless tools); PipeWire for audio;
+# savedconfig lets you keep custom suckless config.h patches in portage;
+# strip out everything KDE/GNOME/Qt.
+USE="
+  X
+  dbus elogind
+  alsa pipewire sound-server
+  vulkan opengl vaapi
+  savedconfig
+  dvd dvdread
+  -kde -plasma -qt5 -qt6 -gnome -systemd
+  -bluetooth -networkmanager -telemetry
+  minimal
+"</code></pre>
+
+<hr>
+
+<h2>1 — Verify profile &amp; USE flags</h2>
+
+<pre><code>eselect profile show
+# Should be: default/linux/amd64/23.0/desktop  (plain desktop, NOT plasma)
+
+cat /etc/portage/make.conf | grep ^USE
+# Confirm: X, savedconfig, minimal, -kde, -plasma, -qt5, -qt6</code></pre>
+
+<h2>2 — Install Xorg</h2>
+
+<p>DWM is X11-only. Keep it lean:</p>
+
+<pre><code>emerge -a x11-base/xorg-server x11-apps/xinit
+
+# X11 utilities used in ~/.xinitrc
+emerge -a x11-apps/xrandr x11-apps/setxkbmap x11-apps/xsetroot
+
+# Verify the amdgpu DDX driver is pulled in:
+emerge -a x11-drivers/xf86-video-amdgpu x11-drivers/xf86-input-libinput</code></pre>
+
+<p>No display manager needed — you'll start X from a TTY with <code>startx</code>.</p>
+
+<h2>3 — Install the suckless trinity: dwm + st + dmenu</h2>
+
+<p>Gentoo's suckless ebuilds support <code>savedconfig</code> — Portage stores your patched
+<code>config.h</code> in <code>/etc/portage/savedconfig/</code> so it survives rebuilds.</p>
+
+<pre><code>emerge -a x11-wm/dwm x11-terms/st x11-misc/dmenu</code></pre>
+
+<h3>First-time config workflow</h3>
+
+<pre><code># Portage installs default savedconfig files here:
+ls /etc/portage/savedconfig/x11-wm/dwm-*
+ls /etc/portage/savedconfig/x11-terms/st-*
+ls /etc/portage/savedconfig/x11-misc/dmenu-*
+
+# Edit dwm config to taste:
+nano /etc/portage/savedconfig/x11-wm/dwm-&lt;version&gt;
+
+# Rebuild with your changes:
+emerge -a x11-wm/dwm</code></pre>
+
+<p>Common <code>config.h</code> tweaks for dwm:</p>
+
+<pre><code>/* Example: change mod key to Super (Win key) */
+#define MODKEY Mod4Mask
+
+/* Font — requires a nerd font or terminus */
+static const char *fonts[] = { "Terminus:size=12" };
+
+/* Gaps (if you apply the vanitygaps patch) */
+static const unsigned int gappx = 6;</code></pre>
+
+<h3>Applying patches (the suckless way)</h3>
+
+<p>If you need patches beyond what <code>savedconfig</code> handles (e.g. vanitygaps, barpadding):</p>
+
+<pre><code># Keep a local patches directory for reference
+mkdir -p /root/my-gentoo/patches/dwm
+
+# Option A: patch the savedconfig directly (config-only changes)
+# Option B: use /etc/portage/patches for source-level patches:
+mkdir -p /etc/portage/patches/x11-wm/dwm
+cp my-patch.diff /etc/portage/patches/x11-wm/dwm/
+emerge -a x11-wm/dwm
+# Portage applies user patches automatically before compile.</code></pre>
+
+<h2>4 — Set up ~/.xinitrc</h2>
+
+<pre><code>cat &gt; ~/.xinitrc &lt;&lt; 'EOF'
+#!/bin/sh
+
+# ── Hardware ──────────────────────────────────────
+xrandr --auto                # set native resolution
+
+# ── Input ─────────────────────────────────────────
+setxkbmap us                 # keyboard layout
+
+# ── Audio (PipeWire as user) ──────────────────────
+pipewire &amp;
+wireplumber &amp;
+
+# ── Statusbar (simple example — replace with slstatus or your script)
+while true; do
+    xsetroot -name "$(date '+%a %b %d  %H:%M')  |  $(awk '/MemAvailable/{printf "%.0fM", $2/1024}' /proc/meminfo) free"
+    sleep 30
+done &amp;
+
+# ── Window manager ────────────────────────────────
+exec dwm
+EOF
+
+chmod +x ~/.xinitrc</code></pre>
+
+<p>Start X:</p>
+
+<pre><code>startx</code></pre>
+
+<h2>5 — GPU acceleration</h2>
+
+<pre><code>emerge -a media-libs/mesa media-libs/vulkan-loader dev-util/vulkan-tools
+
+# Quick test
+vulkaninfo --summary 2&gt;/dev/null | grep deviceName
+# → AMD Radeon RX 7800 XT (RADV NAVI32)</code></pre>
+
+<h2>6 — Essential companion tools</h2>
+
+<table>
+  <tr><th>Tool</th><th>Package</th><th>Why</th></tr>
+  <tr><td><strong>slstatus</strong></td><td><code>x11-misc/slstatus</code></td><td>Suckless status bar for dwm (uses savedconfig too)</td></tr>
+  <tr><td><strong>slock</strong></td><td><code>x11-misc/slock</code></td><td>Suckless screen locker</td></tr>
+  <tr><td><strong>surf</strong></td><td><code>www-client/surf</code></td><td>Suckless webkit browser (minimal)</td></tr>
+  <tr><td><strong>feh</strong></td><td><code>media-gfx/feh</code></td><td>Wallpaper setter, image viewer</td></tr>
+  <tr><td><strong>scrot</strong></td><td><code>media-gfx/scrot</code></td><td>Screenshot tool</td></tr>
+  <tr><td><strong>ranger</strong></td><td><code>app-misc/ranger</code></td><td>Terminal file manager</td></tr>
+  <tr><td><strong>mpv</strong></td><td><code>media-video/mpv</code></td><td>Lightweight media player (DVDs: <code>mpv dvd://</code>)</td></tr>
+  <tr><td><strong>dunst</strong></td><td><code>x11-misc/dunst</code></td><td>Notification daemon</td></tr>
+  <tr><td><strong>picom</strong></td><td><code>x11-misc/picom</code></td><td>Compositor (transparency, no-tear)</td></tr>
+</table>
+
+<pre><code>emerge -a x11-misc/slstatus x11-misc/slock media-gfx/feh \
+  media-gfx/scrot app-misc/ranger media-video/mpv x11-misc/dunst x11-misc/picom</code></pre>
+
+<p>Add picom and dunst to <code>~/.xinitrc</code> before <code>exec dwm</code>:</p>
+
+<pre><code>picom -b &amp;
+dunst &amp;</code></pre>
+
+<h2>7 — Networking (lightweight)</h2>
+
+<p>With the DWM profile we intentionally disabled NetworkManager. Use <code>dhcpcd</code> for
+wired, or if you need WiFi:</p>
+
+<pre><code>emerge -a net-wireless/wpa_supplicant
+rc-update add wpa_supplicant default
+
+# Quick connect:
+wpa_passphrase "MySSID" "MyPassword" &gt;&gt; /etc/wpa_supplicant/wpa_supplicant.conf
+rc-service wpa_supplicant start</code></pre>
+
+<h2>8 — Fonts</h2>
+
+<pre><code># Bitmap classic
+emerge -a media-fonts/terminus-font
+
+# Full coverage (emoji, CJK, nerd glyphs)
+emerge -a media-fonts/noto media-fonts/noto-emoji media-fonts/nerd-fonts</code></pre>
+
+<p>Update the font in your dwm and st <code>savedconfig</code> files, then rebuild:</p>
+
+<pre><code>emerge -a x11-wm/dwm x11-terms/st</code></pre>
+
+<h2>9 — DVD playback</h2>
+
+<pre><code># mpv can play DVDs directly
+mpv dvd:///dev/sr0
+
+# Ensure libdvdcss is installed (done in base guide)</code></pre>
+
+<h2>10 — Autostart X on login (optional)</h2>
+
+<p>Add to <code>~/.bash_profile</code>:</p>
+
+<pre><code># Auto-start X on tty1
+if [[ -z "$DISPLAY" &amp;&amp; "$(tty)" == "/dev/tty1" ]]; then
+    exec startx
+fi</code></pre>
+
+<hr>
+
+<h2>Quick command recap</h2>
+
+<pre><code># Full install one-liner
+emerge -a x11-base/xorg-server x11-apps/xinit \
+  x11-apps/xrandr x11-apps/setxkbmap x11-apps/xsetroot \
+  x11-drivers/xf86-video-amdgpu x11-drivers/xf86-input-libinput \
+  x11-wm/dwm x11-terms/st x11-misc/dmenu x11-misc/slstatus \
+  x11-misc/slock x11-misc/picom x11-misc/dunst \
+  media-gfx/feh media-gfx/scrot app-misc/ranger media-video/mpv \
+  media-libs/mesa media-libs/vulkan-loader dev-util/vulkan-tools \
+  media-video/pipewire media-video/wireplumber \
+  media-fonts/terminus-font</code></pre>
+
+<hr>
+
+<div class="nav">
+  <strong>Back to:</strong>
+  <a href="../README.md">README</a> ·
+  <a href="02-kernel-customization.html">Kernel Customization</a>
+</div>
+
+</body>
+</html>

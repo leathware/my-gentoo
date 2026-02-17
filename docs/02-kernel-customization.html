@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02 — Kernel Customization — AMD 9800X3D + RX 7800 XT</title>
+<style>
+  :root { --bg: #fff; --fg: #1a1a1a; --muted: #555; --border: #d0d0d0;
+          --code-bg: #f4f4f4; --accent: #4e4187; }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { font-size: 15px; }
+  body { font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+         color: var(--fg); background: var(--bg);
+         max-width: 52rem; margin: 2rem auto; padding: 0 1.5rem;
+         line-height: 1.6; }
+  h1 { font-size: 1.8rem; border-bottom: 2px solid var(--accent); padding-bottom: .4rem; }
+  h2 { font-size: 1.35rem; margin-top: 2rem; color: var(--accent); }
+  h3 { font-size: 1.1rem; margin-top: 1.4rem; }
+  blockquote { border-left: 4px solid var(--accent); margin: 1rem 0;
+               padding: .5rem 1rem; background: #f9f8ff; color: var(--muted); }
+  code { font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+         font-size: .88em; background: var(--code-bg); padding: .15em .35em;
+         border-radius: 3px; }
+  pre { background: var(--code-bg); border: 1px solid var(--border);
+        border-radius: 5px; padding: 1rem; overflow-x: auto;
+        line-height: 1.45; }
+  pre code { background: none; padding: 0; font-size: .85rem; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { border: 1px solid var(--border); padding: .45rem .75rem; text-align: left; }
+  th { background: var(--code-bg); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+  a { color: var(--accent); }
+  .nav { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border);
+         font-size: .9rem; }
+  @media print {
+    body { max-width: 100%; margin: 0; padding: 0; font-size: 11pt; }
+    pre { white-space: pre-wrap; word-break: break-all; border: 1px solid #ccc; }
+    a { color: inherit; text-decoration: none; }
+    h2 { page-break-after: avoid; }
+    pre, table { page-break-inside: avoid; }
+    .nav { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Kernel Customization — AMD 9800X3D + RX 7800 XT</h1>
+
+<blockquote>
+You installed with a binary kernel (<code>gentoo-kernel-bin</code>). This guide walks you
+through building a <strong>custom kernel</strong> tuned for your exact hardware on <strong>OpenRC</strong>.
+</blockquote>
+
+<hr>
+
+<h2>1 — Install kernel sources &amp; tools</h2>
+
+<pre><code>emerge -a sys-kernel/gentoo-sources sys-kernel/genkernel
+emerge -a sys-apps/pciutils     # for lspci
+
+# Build tools needed for 'make menuconfig' and kernel compilation
+emerge -a sys-libs/ncurses sys-devel/flex sys-devel/bison sys-devel/bc dev-libs/elfutils
+
+# Symlink to the latest sources
+eselect kernel list
+eselect kernel set 1             # pick the version you want
+ls -l /usr/src/linux              # should point to your new sources</code></pre>
+
+<h2>2 — Start from a known-good config</h2>
+
+<p>Use the running binary kernel's config as a starting point:</p>
+
+<pre><code>cd /usr/src/linux
+# Copy the running config
+cp /proc/config.gz .
+gunzip config.gz
+mv config .config
+
+# Update for new kernel options
+make olddefconfig</code></pre>
+
+<h2>3 — Menuconfig — key options for your rig</h2>
+
+<pre><code>make menuconfig</code></pre>
+
+<p>Work through each section below. Items marked <strong><code>[*]</code></strong> should be built-in;
+<strong><code>[M]</code></strong> can be a module.</p>
+
+<h3>Processor</h3>
+
+<pre><code>Processor type and features ---&gt;
+    Processor family          → (AMD Zen 3/Zen 4/Zen 5 — pick the best match)
+    [*] AMD ACPI2Platform and target IDs
+    [*] SMT (Hyperthreading) scheduler support
+    [*] Machine Check / overheating reporting
+    Preemption Model          → Voluntary Kernel Preemption (Desktop)
+    Timer frequency           → 1000 Hz                (good for desktop responsiveness)</code></pre>
+
+<h3>Power / Thermal</h3>
+
+<pre><code>Power management and ACPI ---&gt;
+    [*] ACPI support
+    [*]   Processor P-States driver
+    CPU Frequency scaling ---&gt;
+        Default governor      → schedutil
+        [*] AMD P-State driver         (CONFIG_X86_AMD_PSTATE=y)
+        [*]   AMD P-State EPP          (preferred for Zen 5)</code></pre>
+
+<h3>GPU — AMDGPU (RX 7800 XT / RDNA 3 / Navi 32)</h3>
+
+<pre><code>Device Drivers ---&gt;
+    Graphics support ---&gt;
+        &lt;*&gt; Direct Rendering Manager (DRM)
+        &lt;M&gt; AMD GPU                  (CONFIG_DRM_AMDGPU=m)
+            [*] Enable amdgpu support for NAVI10 and newer
+            [*] Enable amdgpu support for GFX11 (RDNA 3)
+        Display Engine ---&gt;
+            [*] AMD DC — Display Core  (CONFIG_DRM_AMD_DC=y)
+        [*] Framebuffer Console support
+
+    Firmware Drivers ---&gt;
+        [*] AMD SoC firmware loading support</code></pre>
+
+<blockquote>
+<strong>Firmware blobs</strong>: The kernel needs firmware from <code>sys-kernel/linux-firmware</code>.<br>
+Key files: <code>amdgpu/navi32_*</code> — make sure they are in <code>/lib/firmware/amdgpu/</code>.
+</blockquote>
+
+<h3>Storage</h3>
+
+<pre><code>Device Drivers ---&gt;
+    &lt;*&gt; NVMe support                     (CONFIG_BLK_DEV_NVME=y)  — built-in for root
+    &lt;*&gt; Serial ATA / AHCI               (CONFIG_SATA_AHCI=y)     — DVD drive on SATA
+    SCSI ---&gt;
+        &lt;*&gt; SCSI CDROM support           (CONFIG_BLK_DEV_SR=y)
+        &lt;*&gt; SCSI generic support         (CONFIG_CHR_DEV_SG=y)    — burning</code></pre>
+
+<h3>USB</h3>
+
+<pre><code>Device Drivers ---&gt;
+    USB support ---&gt;
+        &lt;*&gt; xHCI HCD (USB 3.x)          (CONFIG_USB_XHCI_HCD=y)
+        &lt;*&gt; EHCI HCD (USB 2.0)</code></pre>
+
+<h3>Networking (X870 Taichi Lite)</h3>
+
+<p>The board typically has <strong>Intel I226-V 2.5 GbE</strong> and optional WiFi (Intel AX210 / AX411).</p>
+
+<pre><code>Device Drivers ---&gt;
+    Ethernet driver support ---&gt;
+        Intel devices ---&gt;
+            &lt;M&gt; Intel(R) 2.5G Ethernet (igc)    (CONFIG_IGC=m)
+
+    # If you have the WiFi card:
+    Network device support ---&gt;
+        Wireless LAN ---&gt;
+            &lt;M&gt; Intel WiFi (iwlwifi)              (CONFIG_IWLWIFI=m)
+            [*]   Intel MVM firmware               (CONFIG_IWLMVM=m)</code></pre>
+
+<blockquote>Run <code>lspci -k</code> to confirm exact NIC/WiFi chipset names.</blockquote>
+
+<h3>Audio (Realtek ALC codec via AMD ACP/HD-Audio)</h3>
+
+<pre><code>Device Drivers ---&gt;
+    Sound card support ---&gt;
+        &lt;M&gt; ALSA ---&gt;
+            HD-Audio ---&gt;
+                &lt;M&gt; HD Audio PCI           (CONFIG_SND_HDA_INTEL=m)
+                &lt;M&gt; Realtek HD-audio codec (CONFIG_SND_HDA_CODEC_REALTEK=m)
+                [*] Build all HD-audio codec support  (safe catch-all)</code></pre>
+
+<h3>Bluetooth (if present)</h3>
+
+<pre><code>Networking support ---&gt;
+    Bluetooth subsystem support ---&gt;
+        &lt;M&gt; Bluetooth                     (CONFIG_BT=m)
+        &lt;M&gt;   RFCOMM, BNEP, HIDP
+        &lt;M&gt;   Bluetooth HCI USB driver   (CONFIG_BT_HCIBTUSB=m)</code></pre>
+
+<h3>Misc important</h3>
+
+<pre><code>File systems ---&gt;
+    &lt;*&gt; EXT4           # root fs (or btrfs/xfs — match yours)
+    &lt;*&gt; VFAT           # EFI System Partition
+    &lt;*&gt; FUSE
+    Pseudo filesystems ---&gt;
+        [*] /proc, /sys, tmpfs, devtmpfs
+
+General setup ---&gt;
+    [*] Control Group support (cgroups)
+    [*] Namespaces support
+
+Security ---&gt;
+    [*] Enable access key retention support   # needed by elogind</code></pre>
+
+<h2>4 — Build &amp; install</h2>
+
+<pre><code>cd /usr/src/linux
+
+# Compile (uses all 16 threads)
+make -j16
+
+# Install modules
+make modules_install
+
+# Install kernel image
+make install          # copies to /boot
+
+# If you use an initramfs (genkernel):
+genkernel --install --kernel-config=/usr/src/linux/.config initramfs</code></pre>
+
+<h2>5 — Update bootloader</h2>
+
+<pre><code>grub-mkconfig -o /boot/grub/grub.cfg</code></pre>
+
+<p>Verify the new entry shows up:</p>
+
+<pre><code>grep menuentry /boot/grub/grub.cfg</code></pre>
+
+<h2>6 — Reboot &amp; validate</h2>
+
+<pre><code>reboot
+
+# After reboot:
+uname -r                        # should show your new kernel version
+dmesg | grep -i amdgpu          # GPU driver loaded?
+dmesg | grep -i microcode       # CPU microcode updated?
+lsmod | grep -E "amdgpu|snd"   # modules loaded?</code></pre>
+
+<h2>7 — Clean up the binary kernel (optional)</h2>
+
+<p>Once you're confident the custom kernel is stable:</p>
+
+<pre><code>emerge --deselect sys-kernel/gentoo-kernel-bin
+emerge --depclean</code></pre>
+
+<hr>
+
+<div class="nav">
+  <strong>Next →</strong> continue to your desktop setup:
+  <ul>
+    <li><a href="03-kde-plasma-setup.html">KDE Plasma Setup</a></li>
+    <li><a href="04-dwm-suckless-setup.html">DWM / Suckless Setup</a></li>
+  </ul>
+</div>
+
+</body>
+</html>

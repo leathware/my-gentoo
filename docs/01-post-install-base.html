@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01 — Common Post-Install Base Setup</title>
+<style>
+  :root { --bg: #fff; --fg: #1a1a1a; --muted: #555; --border: #d0d0d0;
+          --code-bg: #f4f4f4; --accent: #4e4187; }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { font-size: 15px; }
+  body { font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+         color: var(--fg); background: var(--bg);
+         max-width: 52rem; margin: 2rem auto; padding: 0 1.5rem;
+         line-height: 1.6; }
+  h1 { font-size: 1.8rem; border-bottom: 2px solid var(--accent); padding-bottom: .4rem; }
+  h2 { font-size: 1.35rem; margin-top: 2rem; color: var(--accent); }
+  h3 { font-size: 1.1rem; margin-top: 1.4rem; }
+  blockquote { border-left: 4px solid var(--accent); margin: 1rem 0;
+               padding: .5rem 1rem; background: #f9f8ff; color: var(--muted); }
+  code { font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+         font-size: .88em; background: var(--code-bg); padding: .15em .35em;
+         border-radius: 3px; }
+  pre { background: var(--code-bg); border: 1px solid var(--border);
+        border-radius: 5px; padding: 1rem; overflow-x: auto;
+        line-height: 1.45; }
+  pre code { background: none; padding: 0; font-size: .85rem; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { border: 1px solid var(--border); padding: .45rem .75rem; text-align: left; }
+  th { background: var(--code-bg); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+  a { color: var(--accent); }
+  .nav { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border);
+         font-size: .9rem; }
+  @media print {
+    body { max-width: 100%; margin: 0; padding: 0; font-size: 11pt; }
+    pre { white-space: pre-wrap; word-break: break-all; border: 1px solid #ccc; }
+    a { color: inherit; text-decoration: none; }
+    h2 { page-break-after: avoid; }
+    pre, table { page-break-inside: avoid; }
+    .nav { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Common Post-Install Base Setup</h1>
+
+<blockquote>
+Assumes you just finished a Gentoo <strong>minimal OpenRC</strong> install with a binary kernel,
+ethernet is up, and you can <code>emerge</code> packages. Everything below happens as <strong>root</strong>.
+</blockquote>
+
+<hr>
+
+<h2>1 — Sync &amp; select a profile</h2>
+
+<pre><code>emerge --sync
+
+# List available profiles (pick one that matches your target)
+eselect profile list
+
+# KDE path  → choose a desktop/plasma profile (OpenRC variant)
+eselect profile set &lt;N&gt;          # e.g. default/linux/amd64/23.0/desktop/plasma
+
+# DWM path  → a plain desktop profile is sufficient
+eselect profile set &lt;N&gt;          # e.g. default/linux/amd64/23.0/desktop</code></pre>
+
+<h2>2 — Deploy your make.conf</h2>
+
+<pre><code># Git is not part of the minimal install — install it first
+emerge -a dev-vcs/git
+
+# Clone this repo (or scp it to the machine)
+git clone https://github.com/leathware/my-gentoo.git /root/my-gentoo
+
+# Run the helper — picks KDE or DWM and inserts CPU flags automatically
+/root/my-gentoo/scripts/setup-makeconf.sh      # interactive
+# or non-interactive:
+/root/my-gentoo/scripts/setup-makeconf.sh kde
+/root/my-gentoo/scripts/setup-makeconf.sh dwm</code></pre>
+
+<p>Review the result:</p>
+
+<pre><code>cat /etc/portage/make.conf</code></pre>
+
+<h3>make.conf — KDE Plasma profile</h3>
+
+<pre><code># /etc/portage/make.conf — KDE Plasma desktop
+# Hardware: AMD Ryzen 9 9800X3D · RX 7800 XT · X870 Taichi Lite · DVD reader
+# Init: OpenRC
+# ------------------------------------------------------------------
+
+# ── Compiler flags (Zen 5) ──────────────────────────────────────────
+# -march=native lets GCC detect the exact µarch at compile time.
+# If you cross-compile or distcc, replace with -march=znver5 (GCC ≥ 14).
+COMMON_FLAGS="-march=native -O2 -pipe"
+CFLAGS="${COMMON_FLAGS}"
+CXXFLAGS="${COMMON_FLAGS}"
+FCFLAGS="${COMMON_FLAGS}"
+FFLAGS="${COMMON_FLAGS}"
+
+# ── CPU FLAGS (inserted by setup-makeconf.sh) ───────────────────────
+CPU_FLAGS_X86="&lt;run cpuid2cpuflags to populate&gt;"
+
+# ── Parallelism (8C / 16T) ─────────────────────────────────────────
+MAKEOPTS="-j16 -l16"
+EMERGE_DEFAULT_OPTS="--jobs=4 --load-average=16 --with-bdeps=y --keep-going"
+
+# ── Portage behaviour ──────────────────────────────────────────────
+FEATURES="candy fixlafiles unmerge-orphans parallel-fetch"
+ACCEPT_LICENSE="-* @FREE @BINARY-REDISTRIBUTABLE"
+ACCEPT_KEYWORDS="amd64"
+
+# ── Hardware ────────────────────────────────────────────────────────
+VIDEO_CARDS="amdgpu radeonsi"
+INPUT_DEVICES="libinput"
+GRUB_PLATFORMS="efi-64"
+
+# ── Locale ──────────────────────────────────────────────────────────
+L10N="en"
+LINGUAS="en"
+LC_MESSAGES=C.utf8
+
+# ── Global USE — KDE Plasma full desktop ────────────────────────────
+# Wayland-first but keep X11 for compatibility; PipeWire for audio;
+# full Plasma/Qt6 stack; optical media support for the DVD drive.
+USE="
+  X wayland
+  dbus elogind policykit udisks
+  bluetooth networkmanager
+  pipewire sound-server screencast
+  vulkan opengl vaapi
+  alsa
+  dvd dvdread cdda cdr
+  kde plasma qt6 qt5 widgets declarative qml
+  activities semantic-desktop
+  -gnome -systemd -telemetry
+"</code></pre>
+
+<h3>make.conf — DWM / suckless profile</h3>
+
+<pre><code># /etc/portage/make.conf — DWM / suckless minimal desktop
+# Hardware: AMD Ryzen 9 9800X3D · RX 7800 XT · X870 Taichi Lite · DVD reader
+# Init: OpenRC
+# ------------------------------------------------------------------
+
+# ── Compiler flags (Zen 5) ──────────────────────────────────────────
+COMMON_FLAGS="-march=native -O2 -pipe"
+CFLAGS="${COMMON_FLAGS}"
+CXXFLAGS="${COMMON_FLAGS}"
+FCFLAGS="${COMMON_FLAGS}"
+FFLAGS="${COMMON_FLAGS}"
+
+# ── CPU FLAGS (inserted by setup-makeconf.sh) ───────────────────────
+CPU_FLAGS_X86="&lt;run cpuid2cpuflags to populate&gt;"
+
+# ── Parallelism (8C / 16T) ─────────────────────────────────────────
+MAKEOPTS="-j16 -l16"
+EMERGE_DEFAULT_OPTS="--jobs=4 --load-average=16 --with-bdeps=y --keep-going"
+
+# ── Portage behaviour ──────────────────────────────────────────────
+FEATURES="candy fixlafiles unmerge-orphans parallel-fetch"
+ACCEPT_LICENSE="-* @FREE @BINARY-REDISTRIBUTABLE"
+ACCEPT_KEYWORDS="amd64"
+
+# ── Hardware ────────────────────────────────────────────────────────
+VIDEO_CARDS="amdgpu radeonsi"
+INPUT_DEVICES="libinput"
+GRUB_PLATFORMS="efi-64"
+
+# ── Locale ──────────────────────────────────────────────────────────
+L10N="en"
+LINGUAS="en"
+LC_MESSAGES=C.utf8
+
+# ── Global USE — DWM suckless minimal ──────────────────────────────
+# X11 only (no Wayland in vanilla suckless tools); PipeWire for audio;
+# savedconfig lets you keep custom suckless config.h patches in portage;
+# strip out everything KDE/GNOME/Qt.
+USE="
+  X
+  dbus elogind
+  alsa pipewire sound-server
+  vulkan opengl vaapi
+  savedconfig
+  dvd dvdread
+  -kde -plasma -qt5 -qt6 -gnome -systemd
+  -bluetooth -networkmanager -telemetry
+  minimal
+"</code></pre>
+
+<h2>3 — Rebuild @world with the new USE flags</h2>
+
+<pre><code>emerge --ask --update --deep --newuse @world
+emerge --ask --depclean            # remove orphaned packages
+
+# revdep-rebuild needs gentoolkit — install it first
+emerge -a app-portage/gentoolkit
+revdep-rebuild                      # fix broken library links
+
+# Refresh environment
+env-update &amp;&amp; source /etc/profile</code></pre>
+
+<h2>4 — Essential system services (OpenRC)</h2>
+
+<pre><code># ── Logging ──────────────────────────────────────────────
+emerge -a app-admin/sysklogd sys-process/cronie
+rc-update add sysklogd default
+rc-update add cronie default
+
+# ── Seat management (replaces systemd-logind) ───────────
+emerge -a sys-auth/elogind
+rc-update add elogind boot
+
+# ── D-Bus (required by almost every desktop stack) ──────
+emerge -a sys-apps/dbus
+rc-update add dbus default
+
+# ── NTP ─────────────────────────────────────────────────
+emerge -a net-misc/chrony
+rc-update add chronyd default</code></pre>
+
+<h2>5 — Firmware &amp; microcode</h2>
+
+<pre><code># AMD CPU microcode — loaded at early boot
+emerge -a sys-firmware/amd-microcode
+
+# GPU firmware blobs for RX 7800 XT (amdgpu needs these)
+emerge -a sys-kernel/linux-firmware
+
+# If using GRUB, rebuild to pack microcode into the initramfs
+grub-mkconfig -o /boot/grub/grub.cfg</code></pre>
+
+<h2>6 — User account</h2>
+
+<pre><code>useradd -m -G wheel,audio,video,input,usb,cdrom,portage -s /bin/bash &lt;youruser&gt;
+passwd &lt;youruser&gt;</code></pre>
+
+<p>Install <code>doas</code> or <code>sudo</code>:</p>
+
+<pre><code># doas (minimal, suckless-friendly)
+emerge -a app-admin/doas
+echo "permit persist :wheel" &gt; /etc/doas.conf
+
+# OR sudo (more common with KDE/Polkit)
+emerge -a app-admin/sudo
+visudo   # uncomment %wheel ALL=(ALL:ALL) ALL</code></pre>
+
+<h2>7 — Networking</h2>
+
+<p>Pick <strong>one</strong> approach:</p>
+
+<table>
+  <tr><th>Tool</th><th>Install</th><th>Enable</th></tr>
+  <tr>
+    <td>NetworkManager (KDE default)</td>
+    <td><code>emerge -a net-misc/networkmanager</code></td>
+    <td><code>rc-update add NetworkManager default</code></td>
+  </tr>
+  <tr>
+    <td>dhcpcd (minimal / DWM)</td>
+    <td><code>emerge -a net-misc/dhcpcd</code></td>
+    <td><code>rc-update add dhcpcd default</code></td>
+  </tr>
+</table>
+
+<p>Disable whatever the installer left running if you switch:</p>
+
+<pre><code>rc-update del net.eth0 default   # example</code></pre>
+
+<h2>8 — Audio — PipeWire on OpenRC</h2>
+
+<pre><code>emerge -a media-video/pipewire media-video/wireplumber
+
+# PipeWire runs as a user service, not an init daemon.
+# The recommended way on OpenRC is to start it from your session
+# (xinitrc, plasma-session, or a wrapper script).
+# For KDE this happens automatically.
+# For DWM, add to ~/.xinitrc BEFORE exec dwm:
+#   pipewire &amp;
+#   wireplumber &amp;</code></pre>
+
+<h2>9 — DVD / Optical drive</h2>
+
+<pre><code>emerge -a app-cdr/cdrtools app-misc/regionset
+# Make sure your user is in the 'cdrom' group (done above).
+# For video DVD playback:
+emerge -a media-libs/libdvdcss</code></pre>
+
+<h2>10 — Filesystem utilities &amp; misc</h2>
+
+<pre><code>emerge -a sys-fs/e2fsprogs sys-fs/dosfstools sys-fs/ntfs3g
+emerge -a app-arch/unzip app-arch/p7zip</code></pre>
+
+<hr>
+
+<div class="nav">
+  <strong>Next →</strong> go to either:
+  <ul>
+    <li><a href="02-kernel-customization.html">Kernel Customization</a> (recommended before desktop setup)</li>
+    <li><a href="03-kde-plasma-setup.html">KDE Plasma Setup</a></li>
+    <li><a href="04-dwm-suckless-setup.html">DWM / Suckless Setup</a></li>
+  </ul>
+</div>
+
+</body>
+</html>

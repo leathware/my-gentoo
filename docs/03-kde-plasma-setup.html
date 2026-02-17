@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03 — KDE Plasma Desktop Setup (OpenRC)</title>
+<style>
+  :root { --bg: #fff; --fg: #1a1a1a; --muted: #555; --border: #d0d0d0;
+          --code-bg: #f4f4f4; --accent: #4e4187; }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { font-size: 15px; }
+  body { font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+         color: var(--fg); background: var(--bg);
+         max-width: 52rem; margin: 2rem auto; padding: 0 1.5rem;
+         line-height: 1.6; }
+  h1 { font-size: 1.8rem; border-bottom: 2px solid var(--accent); padding-bottom: .4rem; }
+  h2 { font-size: 1.35rem; margin-top: 2rem; color: var(--accent); }
+  h3 { font-size: 1.1rem; margin-top: 1.4rem; }
+  blockquote { border-left: 4px solid var(--accent); margin: 1rem 0;
+               padding: .5rem 1rem; background: #f9f8ff; color: var(--muted); }
+  code { font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+         font-size: .88em; background: var(--code-bg); padding: .15em .35em;
+         border-radius: 3px; }
+  pre { background: var(--code-bg); border: 1px solid var(--border);
+        border-radius: 5px; padding: 1rem; overflow-x: auto;
+        line-height: 1.45; }
+  pre code { background: none; padding: 0; font-size: .85rem; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { border: 1px solid var(--border); padding: .45rem .75rem; text-align: left; }
+  th { background: var(--code-bg); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+  a { color: var(--accent); }
+  .nav { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border);
+         font-size: .9rem; }
+  @media print {
+    body { max-width: 100%; margin: 0; padding: 0; font-size: 11pt; }
+    pre { white-space: pre-wrap; word-break: break-all; border: 1px solid #ccc; }
+    a { color: inherit; text-decoration: none; }
+    h2 { page-break-after: avoid; }
+    pre, table { page-break-inside: avoid; }
+    .nav { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>KDE Plasma Desktop Setup (OpenRC)</h1>
+
+<blockquote>
+Prerequisite: complete <a href="01-post-install-base.html">01-post-install-base</a> first.
+Your make.conf should already have the <strong>kde</strong> profile's USE flags.
+</blockquote>
+
+<hr>
+
+<h2>make.conf — KDE Plasma profile</h2>
+
+<pre><code># /etc/portage/make.conf — KDE Plasma desktop
+# Hardware: AMD Ryzen 9 9800X3D · RX 7800 XT · X870 Taichi Lite · DVD reader
+# Init: OpenRC
+# ------------------------------------------------------------------
+
+# ── Compiler flags (Zen 5) ──────────────────────────────────────────
+# -march=native lets GCC detect the exact µarch at compile time.
+# If you cross-compile or distcc, replace with -march=znver5 (GCC ≥ 14).
+COMMON_FLAGS="-march=native -O2 -pipe"
+CFLAGS="${COMMON_FLAGS}"
+CXXFLAGS="${COMMON_FLAGS}"
+FCFLAGS="${COMMON_FLAGS}"
+FFLAGS="${COMMON_FLAGS}"
+
+# ── CPU FLAGS (inserted by setup-makeconf.sh) ───────────────────────
+CPU_FLAGS_X86="&lt;run cpuid2cpuflags to populate&gt;"
+
+# ── Parallelism (8C / 16T) ─────────────────────────────────────────
+MAKEOPTS="-j16 -l16"
+EMERGE_DEFAULT_OPTS="--jobs=4 --load-average=16 --with-bdeps=y --keep-going"
+
+# ── Portage behaviour ──────────────────────────────────────────────
+FEATURES="candy fixlafiles unmerge-orphans parallel-fetch"
+ACCEPT_LICENSE="-* @FREE @BINARY-REDISTRIBUTABLE"
+ACCEPT_KEYWORDS="amd64"
+
+# ── Hardware ────────────────────────────────────────────────────────
+VIDEO_CARDS="amdgpu radeonsi"
+INPUT_DEVICES="libinput"
+GRUB_PLATFORMS="efi-64"
+
+# ── Locale ──────────────────────────────────────────────────────────
+L10N="en"
+LINGUAS="en"
+LC_MESSAGES=C.utf8
+
+# ── Global USE — KDE Plasma full desktop ────────────────────────────
+# Wayland-first but keep X11 for compatibility; PipeWire for audio;
+# full Plasma/Qt6 stack; optical media support for the DVD drive.
+USE="
+  X wayland
+  dbus elogind policykit udisks
+  bluetooth networkmanager
+  pipewire sound-server screencast
+  vulkan opengl vaapi
+  alsa
+  dvd dvdread cdda cdr
+  kde plasma qt6 qt5 widgets declarative qml
+  activities semantic-desktop
+  -gnome -systemd -telemetry
+"</code></pre>
+
+<hr>
+
+<h2>1 — Verify profile &amp; USE flags</h2>
+
+<pre><code>eselect profile show
+# Should be something like: default/linux/amd64/23.0/desktop/plasma (or /desktop/plasma/openrc)
+
+cat /etc/portage/make.conf | grep ^USE
+# Confirm kde, plasma, qt6, wayland, pipewire, etc. are set</code></pre>
+
+<h2>2 — Install Plasma &amp; essential apps</h2>
+
+<pre><code># Core Plasma desktop
+emerge -a kde-plasma/plasma-meta
+
+# SDDM display manager
+emerge -a x11-misc/sddm
+rc-update add xdm default
+# Tell xdm to use sddm
+echo 'DISPLAYMANAGER="sddm"' &gt; /etc/conf.d/xdm</code></pre>
+
+<h3>Recommended KDE apps</h3>
+
+<pre><code># File manager
+emerge -a kde-apps/dolphin
+
+# Terminal
+emerge -a kde-apps/konsole
+
+# Text editor
+emerge -a kde-apps/kate
+
+# System monitor
+emerge -a kde-plasma/plasma-systemmonitor
+
+# Archive manager
+emerge -a kde-apps/ark
+
+# Screenshot
+emerge -a kde-apps/spectacle
+
+# Image viewer
+emerge -a kde-apps/gwenview
+
+# Media player (VLC handles DVDs nicely)
+emerge -a media-video/vlc
+
+# Web browser
+emerge -a www-client/firefox</code></pre>
+
+<p>Or install a broader bundle:</p>
+
+<pre><code>emerge -a kde-apps/kde-apps-meta   # includes most of the above and more</code></pre>
+
+<h2>3 — GPU acceleration (Mesa / Vulkan)</h2>
+
+<pre><code>emerge -a media-libs/mesa media-libs/vulkan-loader dev-util/vulkan-tools
+
+# Verify Vulkan sees the 7800 XT
+vulkaninfo --summary
+# Should list "AMD Radeon RX 7800 XT (RADV NAVI32)"
+
+# For glxinfo (OpenGL diagnostics)
+emerge -a x11-apps/mesa-progs
+glxinfo | grep "OpenGL renderer"
+# Should show "AMD Radeon RX 7800 XT"</code></pre>
+
+<h2>4 — PipeWire audio</h2>
+
+<p>PipeWire replaces PulseAudio and handles ALSA/JACK/Bluetooth audio.</p>
+
+<pre><code>emerge -a media-video/pipewire media-video/wireplumber
+
+# Plasma starts PipeWire automatically via XDG autostart.
+# After logging in, verify with wpctl (provided by wireplumber):
+wpctl status
+# Should show PipeWire as the running service with audio sinks listed</code></pre>
+
+<h2>5 — Bluetooth</h2>
+
+<pre><code>emerge -a net-wireless/bluez
+rc-update add bluetooth default
+rc-service bluetooth start
+
+# Plasma's Bluetooth applet should now discover devices.</code></pre>
+
+<h2>6 — NetworkManager GUI</h2>
+
+<p>Already enabled in post-install-base. Plasma's network applet uses it automatically.</p>
+
+<pre><code>nmcli device status          # quick CLI check</code></pre>
+
+<h2>7 — DVD playback in KDE</h2>
+
+<pre><code># Already installed in base: app-cdr/cdrtools, media-libs/libdvdcss
+# VLC plays DVDs out of the box:
+vlc dvd:///dev/sr0</code></pre>
+
+<h2>8 — Theming &amp; look</h2>
+
+<pre><code># Breeze is installed with Plasma; for extra icon packs:
+emerge -a kde-frameworks/breeze-icons
+
+# Kvantum for advanced Qt theming (optional):
+emerge -a x11-themes/kvantum</code></pre>
+
+<h2>9 — Wayland vs X11</h2>
+
+<p>SDDM lets you choose the session type at login:</p>
+<ul>
+  <li><strong>Plasma (Wayland)</strong> — default, recommended for RX 7800 XT / AMDGPU.</li>
+  <li><strong>Plasma (X11)</strong> — fallback if you hit app-compat issues.</li>
+</ul>
+
+<p>Confirm you're running Wayland inside a session:</p>
+
+<pre><code>echo $XDG_SESSION_TYPE
+# → wayland</code></pre>
+
+<h2>10 — Performance tweaks</h2>
+
+<h3>VM writeback (reduce SSD wear)</h3>
+
+<pre><code>echo 'vm.dirty_writeback_centisecs = 6000' &gt;&gt; /etc/sysctl.conf
+sysctl -p</code></pre>
+
+<h3>AMDGPU power profile (performance when plugged in)</h3>
+
+<pre><code>echo "high" &gt; /sys/class/drm/card1/device/power_dpm_force_performance_level
+# To persist, add to a local OpenRC script or udev rule.</code></pre>
+
+<h3>Zram swap (nice for compiles)</h3>
+
+<pre><code>emerge -a sys-block/zram-init
+rc-update add zram-init boot
+# Configure in /etc/conf.d/zram-init</code></pre>
+
+<hr>
+
+<h2>Quick command recap</h2>
+
+<pre><code># Full install one-liner (for the impatient)
+emerge -a kde-plasma/plasma-meta x11-misc/sddm kde-apps/dolphin \
+  kde-apps/konsole kde-apps/kate www-client/firefox media-video/vlc \
+  media-video/pipewire media-video/wireplumber \
+  net-wireless/bluez \
+  media-libs/mesa media-libs/vulkan-loader dev-util/vulkan-tools x11-apps/mesa-progs
+
+rc-update add xdm default
+rc-update add bluetooth default
+echo 'DISPLAYMANAGER="sddm"' &gt; /etc/conf.d/xdm
+reboot</code></pre>
+
+<hr>
+
+<div class="nav">
+  <strong>Back to:</strong>
+  <a href="../README.md">README</a> ·
+  <a href="02-kernel-customization.html">Kernel Customization</a>
+</div>
+
+</body>
+</html>
