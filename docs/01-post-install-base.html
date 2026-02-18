@@ -125,15 +125,16 @@ template. That's all it does — no emerge, no profile changes.</p>
 <pre><code># Check that the USE flags and CPU_FLAGS_X86 look correct:
 cat /etc/portage/make.conf</code></pre>
 
-<h3>2b — Set the eselect profile (if you haven't already)</h3>
+<h3>2b — Verify your eselect profile</h3>
+
+<p>You already set this during install (step 0). Just confirm it's correct
+before the @world rebuild — the wrong profile would pull in the wrong
+USE flags globally.</p>
 
 <pre><code># Show your current profile:
 eselect profile show
-
-# If you're on KDE and not already on desktop/plasma, switch now:
-# (DWM users should already be on 'desktop' — skip this step)
-eselect profile list
-eselect profile set &lt;N&gt;   # pick desktop/plasma or desktop/plasma/openrc</code></pre>
+# DWM  → should say .../desktop           (plain desktop, no KDE/Qt)
+# KDE  → should say .../desktop/plasma     (or desktop/plasma/openrc)</code></pre>
 
 <h3>2c — Update @world</h3>
 
