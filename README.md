@@ -41,8 +41,9 @@ sudo ./scripts/setup-makeconf.sh
 configs/
   kde/make.conf          # make.conf template — KDE Plasma profile
   dwm/make.conf          # make.conf template — DWM suckless profile
+  dwm/package.use        # package.use overrides (breaks tiff ↔ libwebp cycle)
 scripts/
-  setup-makeconf.sh      # Deploys make.conf + auto-detects CPU_FLAGS_X86
+  setup-makeconf.sh      # Deploys make.conf + package.use + auto-detects CPU_FLAGS_X86
 docs/
   01-post-install-base.html
   02-kernel-customization.html

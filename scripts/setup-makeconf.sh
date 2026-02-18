@@ -65,6 +65,18 @@ cp "$PROFILE_CONF" "$MAKECONF_TARGET"
 sed -i "s|^# CPU_FLAGS_X86=.*|${CPU_FLAGS_LINE}|" "$MAKECONF_TARGET"
 
 info "Installed ${PROFILE} make.conf → $MAKECONF_TARGET"
+
+# ── Deploy package.use overrides (if the profile ships one) ─────────
+PROFILE_PKGUSE="${REPO_DIR}/configs/${PROFILE}/package.use"
+PKGUSE_DIR="/etc/portage/package.use"
+
+if [[ -f "$PROFILE_PKGUSE" ]]; then
+    # Ensure the package.use directory exists (Portage accepts a dir here)
+    mkdir -p "$PKGUSE_DIR"
+    cp "$PROFILE_PKGUSE" "${PKGUSE_DIR}/99-${PROFILE}-profile"
+    info "Installed package.use overrides → ${PKGUSE_DIR}/99-${PROFILE}-profile"
+fi
+
 echo ""
 info "Next steps:"
 echo "  1. Review:       less $MAKECONF_TARGET"
