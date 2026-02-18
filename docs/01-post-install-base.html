@@ -192,6 +192,19 @@ USE="
 
 <h2>3 — Rebuild @world with the new USE flags</h2>
 
+<blockquote>
+<strong>Circular-dependency note (DWM profile):</strong> <code>media-libs/tiff</code> and
+<code>media-libs/libwebp</code> can block each other because tiff pulls in libwebp
+(USE&nbsp;<code>webp</code>) and libwebp pulls in tiff (USE&nbsp;<code>tiff</code>).
+The <code>setup-makeconf.sh</code> script automatically installs a
+<code>/etc/portage/package.use/99-dwm-profile</code> file that disables the
+<code>tiff</code> flag on libwebp to break the cycle.
+If you deployed make.conf by hand, add the override yourself:
+
+<pre><code>mkdir -p /etc/portage/package.use
+echo "media-libs/libwebp -tiff" >> /etc/portage/package.use/99-dwm-profile</code></pre>
+</blockquote>
+
 <pre><code>emerge --ask --update --deep --newuse @world
 emerge --ask --depclean            # remove orphaned packages
 

@@ -1,0 +1,5 @@
+# Break circular dependency: media-libs/tiff ↔ media-libs/libwebp
+# tiff depends on libwebp (via USE=webp) and libwebp depends on tiff (via USE=tiff).
+# Disabling tiff support in libwebp breaks the cycle with no practical
+# impact on a minimal DWM desktop.
+media-libs/libwebp -tiff
