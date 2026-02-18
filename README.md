@@ -5,9 +5,11 @@ Covers two desktop paths — **full KDE Plasma** and **minimal DWM / suckless** 
 hardware-tuned `make.conf` configs, a CPU-flags setup script, and a custom kernel
 guide.
 
-> **Important:** During the Gentoo install, select the **desktop OpenRC profile**
-> (e.g. `default/linux/amd64/23.0/desktop`). This avoids circular dependency
-> issues when the setup script applies desktop USE flags later.
+> **Important:** During the Gentoo install, select the right **desktop profile**:
+> - **DWM** → `default/linux/amd64/23.0/desktop` (plain desktop — no KDE/Qt bloat)
+> - **KDE** → `default/linux/amd64/23.0/desktop/plasma` (adds KDE/Qt USE flags)
+>
+> This avoids circular dependency issues when applying desktop USE flags later.
 
 ## Hardware target
 
@@ -22,14 +24,20 @@ guide.
 ## Quick start
 
 ```bash
-# On your freshly installed Gentoo box (desktop OpenRC profile already set):
+# On your freshly installed Gentoo box (desktop profile already set):
 git clone https://github.com/leathware/my-gentoo.git
 cd my-gentoo
 
-# Deploy make.conf, detect CPU flags, and update @world:
+# Deploy make.conf with auto-detected CPU flags:
 sudo ./scripts/setup-makeconf.sh          # interactive — asks KDE or DWM
-sudo ./scripts/setup-makeconf.sh kde      # non-interactive
-sudo ./scripts/setup-makeconf.sh dwm      # non-interactive
+sudo ./scripts/setup-makeconf.sh kde      # deploy KDE make.conf
+sudo ./scripts/setup-makeconf.sh dwm      # deploy DWM make.conf
+
+# Then run these yourself (see docs for full explanations):
+emerge --ask --update --deep --newuse @world
+emerge --ask --depclean
+revdep-rebuild
+env-update && source /etc/profile
 ```
 
 ## Guides (read in order)
@@ -48,7 +56,7 @@ configs/
   kde/make.conf          # make.conf template — KDE Plasma profile
   dwm/make.conf          # make.conf template — DWM suckless profile
 scripts/
-  setup-makeconf.sh      # Deploys make.conf + CPU flags + updates @world
+  setup-makeconf.sh      # Deploys make.conf + auto-detects CPU flags
 docs/
   01-post-install-base.html
   02-kernel-customization.html

@@ -72,14 +72,21 @@ variant — <em>not</em> the default minimal one:</p>
 <pre><code># Inside chroot, after emerge --sync
 eselect profile list
 
-# Pick the desktop OpenRC profile:
-#   default/linux/amd64/23.0/desktop          ← DWM path
-#   default/linux/amd64/23.0/desktop/plasma   ← KDE path (also works for DWM)
+# Pick the right profile for your desktop path:
+#   default/linux/amd64/23.0/desktop          ← DWM path (use this one)
+#   default/linux/amd64/23.0/desktop/plasma   ← KDE path
 eselect profile set &lt;N&gt;</code></pre>
 
-<p>Both KDE and DWM paths work fine from the plain <code>desktop</code> profile.
-The setup script will automatically upgrade to <code>desktop/plasma</code> if you
-chose the KDE path.</p>
+<blockquote>
+<strong>Which profile for which desktop?</strong><br>
+<strong>DWM → <code>desktop</code></strong> (plain). This gives you the base desktop USE flags
+(<code>X</code>, <code>dbus</code>, <code>elogind</code>) without any KDE/Qt baggage. The <code>desktop/plasma</code>
+profile enables <code>kde</code>, <code>qt5</code>, <code>qt6</code>, <code>widgets</code>, etc. globally — meaning
+every package that <em>can</em> build with Qt support <em>will</em>, even though you'll
+never use it. That's wasted compile time and disk space.<br>
+<strong>KDE → <code>desktop/plasma</code></strong>. This pre-enables the KDE/Qt USE flags at the
+profile level, so Portage knows to build the full Plasma stack.
+</blockquote>
 
 <h2>1 — Sync &amp; get the repo</h2>
 
@@ -101,29 +108,63 @@ git clone https://github.com/leathware/my-gentoo.git /root/my-gentoo</code></pre
 
 <h2>2 — Deploy make.conf &amp; update @world</h2>
 
-<p>The setup script deploys the make.conf, detects your CPU flags, and offers
-to update <code>@world</code> right away. For KDE, it also bumps your eselect profile
-from <code>desktop</code> to <code>desktop/plasma</code> automatically.</p>
+<h3>2a — Generate the make.conf</h3>
 
-<pre><code># Interactive — asks KDE or DWM, deploys make.conf, updates @world:
+<p>The setup script detects your CPU flags and deploys the right make.conf
+template. That's all it does — no emerge, no profile changes.</p>
+
+<pre><code># Interactive — asks KDE or DWM, detects CPU flags, deploys make.conf:
 /root/my-gentoo/scripts/setup-makeconf.sh
 
-# Or non-interactive:
+# Or pass the profile directly:
 /root/my-gentoo/scripts/setup-makeconf.sh kde
 /root/my-gentoo/scripts/setup-makeconf.sh dwm</code></pre>
 
 <p>Review the result:</p>
 
-<pre><code>cat /etc/portage/make.conf</code></pre>
+<pre><code># Check that the USE flags and CPU_FLAGS_X86 look correct:
+cat /etc/portage/make.conf</code></pre>
 
-<p>The script runs:</p>
+<h3>2b — Set the eselect profile (if you haven't already)</h3>
 
-<pre><code>emerge --ask --update --deep --newuse @world
+<pre><code># Show your current profile:
+eselect profile show
+
+# If you're on KDE and not already on desktop/plasma, switch now:
+# (DWM users should already be on 'desktop' — skip this step)
+eselect profile list
+eselect profile set &lt;N&gt;   # pick desktop/plasma or desktop/plasma/openrc</code></pre>
+
+<h3>2c — Update @world</h3>
+
+<p>Now apply the new USE flags to every installed package. Since you're
+already on a desktop profile, this is a straightforward single-pass update.</p>
+
+<pre><code># ── Rebuild everything affected by the new make.conf ─────────────────
+# --ask    → shows the merge list and asks for confirmation before starting
+# --update → update packages to latest available versions
+# --deep   → check the ENTIRE dependency tree, not just top-level packages
+# --newuse → rebuild any package whose USE flags changed
+emerge --ask --update --deep --newuse @world</code></pre>
+
+<h3>2d — Clean up</h3>
+
+<pre><code># ── Remove orphaned packages ───────────────────────────────────────
+# depclean finds packages that nothing in @world depends on any more
+# (leftover dependencies from old USE flags) and removes them.
 emerge --ask --depclean
-revdep-rebuild</code></pre>
 
-<p>Since you're already on a desktop profile, this is a straightforward
-single-pass update — no special workarounds needed.</p>
+# ── Check for broken library links ─────────────────────────────────
+# revdep-rebuild scans every installed binary/library for broken .so links
+# (e.g. a library was upgraded and another package still links the old version).
+# Install gentoolkit first if you don't have it:
+emerge --ask app-portage/gentoolkit
+revdep-rebuild
+
+# ── Refresh the environment ───────────────────────────────────────
+# env-update regenerates /etc/env.d cache files (ld.so.conf, PATH, etc.).
+# source /etc/profile picks up the changes in your current shell.
+env-update &amp;&amp; source /etc/profile</code></pre>
 
 <h3>make.conf — KDE Plasma profile</h3>
 
