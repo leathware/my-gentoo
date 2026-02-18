@@ -61,6 +61,8 @@ Your make.conf should already have the <strong>dwm</strong> profile's USE flags 
 # ------------------------------------------------------------------
 
 # ── Compiler flags (Zen 5) ──────────────────────────────────────────
+# -march=native lets GCC detect the exact µarch at compile time.
+# If you cross-compile or distcc, replace with -march=znver5 (GCC ≥ 14).
 COMMON_FLAGS="-march=native -O2 -pipe"
 CFLAGS="${COMMON_FLAGS}"
 CXXFLAGS="${COMMON_FLAGS}"

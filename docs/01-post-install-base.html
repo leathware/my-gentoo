@@ -48,9 +48,9 @@
 
 <blockquote>
 Assumes you just finished a Gentoo <strong>minimal OpenRC</strong> install with the
-<strong>distribution kernel</strong> (<code>sys-kernel/gentoo-kernel</code>) and selected the
-<strong>desktop OpenRC profile</strong> during install
-(e.g. <code>default/linux/amd64/23.0/desktop</code>).
+<strong>distribution kernel</strong> (<code>sys-kernel/gentoo-kernel</code>) and selected a
+<strong>desktop profile</strong> during install — either <code>desktop</code> (for DWM) or
+<code>desktop/plasma</code> (for KDE).
 Ethernet is up and you can <code>emerge</code> packages. Everything below happens as <strong>root</strong>.
 </blockquote>
 
@@ -228,6 +228,8 @@ USE="
 # ------------------------------------------------------------------
 
 # ── Compiler flags (Zen 5) ──────────────────────────────────────────
+# -march=native lets GCC detect the exact µarch at compile time.
+# If you cross-compile or distcc, replace with -march=znver5 (GCC ≥ 14).
 COMMON_FLAGS="-march=native -O2 -pipe"
 CFLAGS="${COMMON_FLAGS}"
 CXXFLAGS="${COMMON_FLAGS}"
@@ -274,37 +276,81 @@ USE="
 
 <h2>3 — Essential system services (OpenRC)</h2>
 
-<pre><code># ── Logging ──────────────────────────────────────────────
+<p><code>rc-update add &lt;service&gt; &lt;runlevel&gt;</code> registers a service
+to start at a specific runlevel. The two you'll see here:</p>
+<ul>
+  <li><strong>default</strong> — runs during normal multi-user boot (most services go here)</li>
+  <li><strong>boot</strong> — runs earlier, before <code>default</code> (used by services that other
+      boot-time processes depend on)</li>
+</ul>
+
+<pre><code># ── Logging &amp; scheduling ─────────────────────────────────
+# sysklogd is a system logger — it writes kernel and daemon messages to
+# /var/log/ (syslog, messages, etc.). Without it you have no logs to debug.
+# cronie is a cron daemon — it runs scheduled tasks (log rotation, Portage
+# sync scripts, etc.) defined in /etc/crontab or per-user crontabs.
 emerge -a app-admin/sysklogd sys-process/cronie
-rc-update add sysklogd default
-rc-update add cronie default
+rc-update add sysklogd default   # start logging during normal boot
+rc-update add cronie default     # start the cron scheduler during normal boot
 
 # ── Seat management (replaces systemd-logind) ───────────
+# elogind manages login sessions, seats, and power actions (shutdown, suspend).
+# It's the standalone fork of systemd-logind for non-systemd systems.
+# Desktops and Polkit require it to know "who is sitting at the console".
 emerge -a sys-auth/elogind
-rc-update add elogind boot
+rc-update add elogind boot       # boot runlevel — must be ready before dbus/desktop
 
-# ── D-Bus (required by almost every desktop stack) ──────
+# ── D-Bus (inter-process communication) ─────────────────
+# D-Bus is a message bus that lets programs talk to each other. Nearly every
+# desktop component uses it — elogind, NetworkManager, PipeWire, Bluetooth,
+# Polkit, display managers, and most GUI apps.
 emerge -a sys-apps/dbus
 rc-update add dbus default
 
-# ── NTP ─────────────────────────────────────────────────
+# ── NTP (time synchronisation) ──────────────────────────
+# chrony keeps your system clock accurate by syncing with internet time
+# servers (NTP). Needed for HTTPS certificates, logs, and cron accuracy.
 emerge -a net-misc/chrony
 rc-update add chronyd default</code></pre>
 
 <h2>4 — Firmware &amp; microcode</h2>
 
-<pre><code># AMD CPU microcode — loaded at early boot
+<pre><code># ── CPU microcode ───────────────────────────────────────────────────
+# Microcode is low-level firmware that patches the CPU's internal behaviour.
+# AMD releases updates to fix bugs, security vulnerabilities (like Spectre),
+# and improve stability. The kernel loads it at early boot before anything
+# else runs, so the CPU is patched from the very first moment.
 emerge -a sys-firmware/amd-microcode
 
-# GPU firmware blobs for RX 7800 XT (amdgpu needs these)
+# ── GPU / networking firmware blobs ────────────────────────────────
+# Modern hardware (GPU, WiFi, Bluetooth) needs binary firmware "blobs"
+# that the kernel loads at runtime. linux-firmware is a collection of
+# these files. Without them, your RX 7800 XT won't initialise (it needs
+# the amdgpu/navi32_* blobs), and WiFi/BT won't work either.
 emerge -a sys-kernel/linux-firmware
 
-# If using GRUB, rebuild to pack microcode into the initramfs
+# ── Rebuild GRUB to include microcode in the boot image ─────────────
+# grub-mkconfig scans /boot for kernel images and generates the GRUB
+# config file. After installing new firmware/microcode, re-run it so
+# the microcode is packed into the initramfs and loaded at boot.
 grub-mkconfig -o /boot/grub/grub.cfg</code></pre>
 
 <h2>5 — User account</h2>
 
-<pre><code>useradd -m -G wheel,audio,video,input,usb,cdrom,portage -s /bin/bash &lt;youruser&gt;
+<pre><code># ── Create your daily-driver user ───────────────────────────────────
+# -m             → create a home directory (/home/&lt;youruser&gt;)
+# -G group,...   → add the user to these supplementary groups:
+#   wheel    → can use sudo/doas (root privilege escalation)
+#   audio    → direct access to sound devices (ALSA)
+#   video    → access to GPU devices (/dev/dri/*)
+#   input    → access to input devices (/dev/input/*)
+#   usb      → access to USB devices
+#   cdrom    → access to the DVD drive (/dev/sr0)
+#   portage  → can read Portage temp files and distfiles
+# -s /bin/bash   → set the login shell to bash
+useradd -m -G wheel,audio,video,input,usb,cdrom,portage -s /bin/bash &lt;youruser&gt;
+
+# Set the password for the new user (you'll type it twice):
 passwd &lt;youruser&gt;</code></pre>
 
 <p>Install <code>doas</code> or <code>sudo</code>:</p>
