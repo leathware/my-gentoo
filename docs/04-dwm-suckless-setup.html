@@ -105,6 +105,28 @@ USE="
   minimal
 "</code></pre>
 
+<h3>package.use — break tiff ↔ libwebp circular dependency</h3>
+
+<p>The DWM profile's <code>minimal</code> USE flag triggers a circular dependency between
+<code>media-libs/tiff</code> (USE&nbsp;<code>webp</code>) and <code>media-libs/libwebp</code>
+(USE&nbsp;<code>tiff</code>). The fix is a single package.use override shipped in
+<code>configs/dwm/package.use</code>:</p>
+
+<pre><code># /etc/portage/package.use/99-dwm-profile
+media-libs/libwebp -tiff</code></pre>
+
+<p>The <code>setup-makeconf.sh</code> script deploys this automatically. If you already
+have the DWM make.conf on a <strong>live system</strong>, run these commands to fix it:</p>
+
+<pre><code># Create the package.use directory if it doesn't exist
+mkdir -p /etc/portage/package.use
+
+# Add the override that breaks the circular dependency
+echo "media-libs/libwebp -tiff" &gt; /etc/portage/package.use/99-dwm-profile
+
+# Now the @world update will succeed
+emerge --ask --update --deep --newuse @world</code></pre>
+
 <hr>
 
 <h2>1 — Verify profile &amp; USE flags</h2>
