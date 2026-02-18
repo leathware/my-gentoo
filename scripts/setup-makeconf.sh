@@ -16,9 +16,9 @@
 #   7. Offers to run emerge --update --deep --newuse @world
 #
 # Usage:
-#   ./scripts/setup-makeconf.sh              # interactive — deploy + update @world
-#   ./scripts/setup-makeconf.sh kde          # non-interactive
-#   ./scripts/setup-makeconf.sh dwm          # non-interactive
+#   ./scripts/setup-makeconf.sh              # interactive — asks KDE or DWM
+#   ./scripts/setup-makeconf.sh kde          # skip profile question (still prompts for @world)
+#   ./scripts/setup-makeconf.sh dwm          # skip profile question (still prompts for @world)
 set -euo pipefail
 
 # ── Colour helpers ───────────────────────────────────────────────────
