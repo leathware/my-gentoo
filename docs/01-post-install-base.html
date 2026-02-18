@@ -47,42 +47,74 @@
 <h1>Common Post-Install Base Setup</h1>
 
 <blockquote>
-Assumes you just finished a Gentoo <strong>minimal OpenRC</strong> install with a binary kernel,
-ethernet is up, and you can <code>emerge</code> packages. Everything below happens as <strong>root</strong>.
+Assumes you just finished a Gentoo <strong>minimal OpenRC</strong> install with a binary kernel
+and selected the <strong>desktop OpenRC profile</strong> during install
+(e.g. <code>default/linux/amd64/23.0/desktop</code>).
+Ethernet is up and you can <code>emerge</code> packages. Everything below happens as <strong>root</strong>.
+</blockquote>
+
+<blockquote>
+<strong>Why the desktop profile during install?</strong>  Selecting the desktop profile early
+means the base desktop USE flags (<code>X</code>, <code>dbus</code>, <code>elogind</code>, etc.)
+are already active. When you deploy the KDE or DWM make.conf later, the
+USE-flag delta is small and Portage resolves <code>@world</code> cleanly in a single pass —
+no circular dependency headaches.
 </blockquote>
 
 <hr>
 
-<h2>1 — Sync &amp; select a profile</h2>
+<h2>0 — During the Gentoo install (handbook reminder)</h2>
+
+<p>When the handbook tells you to pick an eselect profile, choose a <strong>desktop</strong>
+variant — <em>not</em> the default minimal one:</p>
+
+<pre><code># Inside chroot, after emerge --sync
+eselect profile list
+
+# Pick the desktop OpenRC profile:
+#   default/linux/amd64/23.0/desktop          ← DWM path
+#   default/linux/amd64/23.0/desktop/plasma   ← KDE path (also works for DWM)
+eselect profile set &lt;N&gt;</code></pre>
+
+<p>Both KDE and DWM paths work fine from the plain <code>desktop</code> profile.
+The setup script will automatically upgrade to <code>desktop/plasma</code> if you
+chose the KDE path.</p>
+
+<h2>1 — Sync &amp; get the repo</h2>
 
 <pre><code>emerge --sync
 
-# List available profiles (pick one that matches your target)
-eselect profile list
-
-# KDE path  → choose a desktop/plasma profile (OpenRC variant)
-eselect profile set &lt;N&gt;          # e.g. default/linux/amd64/23.0/desktop/plasma
-
-# DWM path  → a plain desktop profile is sufficient
-eselect profile set &lt;N&gt;          # e.g. default/linux/amd64/23.0/desktop</code></pre>
-
-<h2>2 — Deploy your make.conf</h2>
-
-<pre><code># Git is not part of the minimal install — install it first
+# Git is not part of the minimal install — install it first
 emerge -a dev-vcs/git
 
 # Clone this repo (or scp it to the machine)
-git clone https://github.com/leathware/my-gentoo.git /root/my-gentoo
+git clone https://github.com/leathware/my-gentoo.git /root/my-gentoo</code></pre>
 
-# Run the helper — picks KDE or DWM and inserts CPU flags automatically
-/root/my-gentoo/scripts/setup-makeconf.sh      # interactive
-# or non-interactive:
+<h2>2 — Deploy make.conf &amp; update @world</h2>
+
+<p>The setup script deploys the make.conf, detects your CPU flags, and offers
+to update <code>@world</code> right away. For KDE, it also bumps your eselect profile
+from <code>desktop</code> to <code>desktop/plasma</code> automatically.</p>
+
+<pre><code># Interactive — asks KDE or DWM, deploys make.conf, updates @world:
+/root/my-gentoo/scripts/setup-makeconf.sh
+
+# Or non-interactive:
 /root/my-gentoo/scripts/setup-makeconf.sh kde
 /root/my-gentoo/scripts/setup-makeconf.sh dwm</code></pre>
 
 <p>Review the result:</p>
 
 <pre><code>cat /etc/portage/make.conf</code></pre>
+
+<p>The script runs:</p>
+
+<pre><code>emerge --ask --update --deep --newuse @world
+emerge --ask --depclean
+revdep-rebuild</code></pre>
+
+<p>Since you're already on a desktop profile, this is a straightforward
+single-pass update — no special workarounds needed.</p>
 
 <h3>make.conf — KDE Plasma profile</h3>
 
@@ -190,19 +222,7 @@ USE="
   minimal
 "</code></pre>
 
-<h2>3 — Rebuild @world with the new USE flags</h2>
-
-<pre><code>emerge --ask --update --deep --newuse @world
-emerge --ask --depclean            # remove orphaned packages
-
-# revdep-rebuild needs gentoolkit — install it first
-emerge -a app-portage/gentoolkit
-revdep-rebuild                      # fix broken library links
-
-# Refresh environment
-env-update &amp;&amp; source /etc/profile</code></pre>
-
-<h2>4 — Essential system services (OpenRC)</h2>
+<h2>3 — Essential system services (OpenRC)</h2>
 
 <pre><code># ── Logging ──────────────────────────────────────────────
 emerge -a app-admin/sysklogd sys-process/cronie
@@ -221,7 +241,7 @@ rc-update add dbus default
 emerge -a net-misc/chrony
 rc-update add chronyd default</code></pre>
 
-<h2>5 — Firmware &amp; microcode</h2>
+<h2>4 — Firmware &amp; microcode</h2>
 
 <pre><code># AMD CPU microcode — loaded at early boot
 emerge -a sys-firmware/amd-microcode
@@ -232,7 +252,7 @@ emerge -a sys-kernel/linux-firmware
 # If using GRUB, rebuild to pack microcode into the initramfs
 grub-mkconfig -o /boot/grub/grub.cfg</code></pre>
 
-<h2>6 — User account</h2>
+<h2>5 — User account</h2>
 
 <pre><code>useradd -m -G wheel,audio,video,input,usb,cdrom,portage -s /bin/bash &lt;youruser&gt;
 passwd &lt;youruser&gt;</code></pre>
@@ -247,7 +267,7 @@ echo "permit persist :wheel" &gt; /etc/doas.conf
 emerge -a app-admin/sudo
 visudo   # uncomment %wheel ALL=(ALL:ALL) ALL</code></pre>
 
-<h2>7 — Networking</h2>
+<h2>6 — Networking</h2>
 
 <p>Pick <strong>one</strong> approach:</p>
 
@@ -269,7 +289,7 @@ visudo   # uncomment %wheel ALL=(ALL:ALL) ALL</code></pre>
 
 <pre><code>rc-update del net.eth0 default   # example</code></pre>
 
-<h2>8 — Audio — PipeWire on OpenRC</h2>
+<h2>7 — Audio — PipeWire on OpenRC</h2>
 
 <pre><code>emerge -a media-video/pipewire media-video/wireplumber
 
@@ -281,17 +301,200 @@ visudo   # uncomment %wheel ALL=(ALL:ALL) ALL</code></pre>
 #   pipewire &amp;
 #   wireplumber &amp;</code></pre>
 
-<h2>9 — DVD / Optical drive</h2>
+<h2>8 — DVD / Optical drive</h2>
 
 <pre><code>emerge -a app-cdr/cdrtools app-misc/regionset
 # Make sure your user is in the 'cdrom' group (done above).
 # For video DVD playback:
 emerge -a media-libs/libdvdcss</code></pre>
 
-<h2>10 — Filesystem utilities &amp; misc</h2>
+<h2>9 — Filesystem utilities &amp; misc</h2>
 
 <pre><code>emerge -a sys-fs/e2fsprogs sys-fs/dosfstools sys-fs/ntfs3g
 emerge -a app-arch/unzip app-arch/p7zip</code></pre>
+
+<h2>10 — Understanding circular dependencies</h2>
+
+<p>Sooner or later every Gentoo user hits a message like:</p>
+
+<pre><code>!!! Error: circular dependencies:
+(media-video/pipewire-1.0.7:0/0.4::gentoo, ...) depends on
+(media-libs/libpulse-17.0::gentoo, ...) (runtime)
+  is satisfied by ... pipewire[sound-server] ...</code></pre>
+
+<p>This section explains <strong>what</strong> they are, <strong>why</strong> they happen, and exactly
+how to break them.</p>
+
+<h3>What is a circular dependency?</h3>
+
+<p>A circular dependency (or "dep cycle") occurs when two or more packages
+depend on each other — directly or indirectly — creating a loop that
+Portage can't resolve on its own:</p>
+
+<pre><code>Package A needs Package B   →   B needs A   →   ???
+ (which one gets built first?)</code></pre>
+
+<p>In practice, the cycle is usually triggered by USE flags.
+The packages <em>can</em> build without each other's optional features,
+but the flags tell Portage they need each other <em>with</em> those features.</p>
+
+<h3>Common cycles on this hardware</h3>
+
+<table>
+  <tr><th>Package A</th><th>Package B</th><th>USE flag causing the loop</th></tr>
+  <tr>
+    <td><code>media-video/pipewire</code></td>
+    <td><code>media-libs/libpulse</code></td>
+    <td><code>sound-server</code> (each can provide/consume PulseAudio compat)</td>
+  </tr>
+  <tr>
+    <td><code>media-libs/mesa</code></td>
+    <td><code>media-libs/libva</code></td>
+    <td><code>vaapi</code> (mesa provides VA-API, libva links against mesa)</td>
+  </tr>
+  <tr>
+    <td><code>dev-qt/qtmultimedia</code></td>
+    <td><code>media-video/pipewire</code></td>
+    <td><code>pipewire</code> / <code>qml</code></td>
+  </tr>
+  <tr>
+    <td><code>sys-auth/elogind</code></td>
+    <td><code>sys-apps/dbus</code></td>
+    <td><code>elogind</code> (dbus needs elogind, elogind needs dbus)</td>
+  </tr>
+</table>
+
+<blockquote>
+<strong>Why did we avoid most of these?</strong> By selecting the <strong>desktop profile
+during install</strong>, the base USE flags (<code>X</code>, <code>dbus</code>, <code>elogind</code>, etc.) were
+<em>already active</em> when you first built those packages. The cycle only bites
+when you flip many flags at once on a minimal profile.
+</blockquote>
+
+<h3>How to fix a circular dependency</h3>
+
+<p>The general strategy is: <strong>break the loop by temporarily disabling the
+offending USE flag, build the packages, then re-enable it.</strong></p>
+
+<h4>Step 1 — Read the error</h4>
+
+<p>Portage tells you which packages and which USE flags form the cycle.
+Look for lines like <code>caused by ... USE flag ...</code> or
+<code>is satisfied by ... [flag]</code>.</p>
+
+<h4>Step 2 — Create a temporary <code>package.use</code> override</h4>
+
+<pre><code># Example: break the pipewire ↔ libpulse cycle
+# Temporarily build pipewire without sound-server
+echo "media-video/pipewire -sound-server" &gt;&gt; /etc/portage/package.use/zzz-temp-circ
+
+# Example: break the mesa ↔ libva cycle
+echo "media-libs/mesa -vaapi" &gt;&gt; /etc/portage/package.use/zzz-temp-circ</code></pre>
+
+<p>The <code>zzz-temp-circ</code> filename sorts last, so it overrides earlier entries.
+You can stack as many overrides as you need in the same file.</p>
+
+<h4>Step 3 — First pass: emerge with the crippled flags</h4>
+
+<pre><code># --oneshot so these partial builds don't get added to @world
+emerge --ask --oneshot media-video/pipewire media-libs/mesa</code></pre>
+
+<p>This installs the packages <em>without</em> the features that caused the loop.
+Their dependencies can now find them on disk.</p>
+
+<h4>Step 4 — Remove the override and rebuild</h4>
+
+<pre><code># Remove the temporary file
+rm /etc/portage/package.use/zzz-temp-circ
+
+# Re-run the full update — Portage will now see the flags
+# are back and rebuild with full features
+emerge --ask --update --deep --newuse @world</code></pre>
+
+<h4>Step 5 — Verify and clean up</h4>
+
+<pre><code># Remove orphaned packages from the partial builds
+emerge --ask --depclean
+
+# Ensure no broken library links remain
+revdep-rebuild</code></pre>
+
+<h3>Other tips for circular deps</h3>
+
+<ul>
+  <li><strong><code>emerge --backtrack=300</code></strong> — lets Portage try more combinations
+      before giving up. Sometimes it finds a path on its own:
+      <pre><code>emerge --ask --backtrack=300 --update --deep --newuse @world</code></pre></li>
+  <li><strong><code>emerge --nodeps</code></strong> — force-installs a package ignoring deps.
+      Use sparingly and always follow with a full <code>@world</code> rebuild.</li>
+  <li><strong>Check the Gentoo wiki</strong> — many circular deps are known and documented:
+      <code>https://wiki.gentoo.org/wiki/Circular_dependencies</code></li>
+  <li><strong>Don't panic</strong> — circular deps are a Portage planning problem, not a
+      system breakage. Your installed packages still work fine while you sort it out.</li>
+</ul>
+
+<h2>11 — Cleanup after everything is done</h2>
+
+<p>Once your desktop is running and everything works, claw back disk space
+and tidy up the system. These commands are safe to run at any time.</p>
+
+<h3>Remove orphaned packages</h3>
+
+<pre><code># depclean removes packages that nothing in @world depends on any more
+# (leftover build deps, replaced packages, etc.)
+# --ask shows you what will be removed before doing it
+emerge --ask --depclean</code></pre>
+
+<h3>Check for broken library links</h3>
+
+<pre><code># revdep-rebuild scans every installed binary/library and looks for
+# broken .so symlinks (e.g. a library was upgraded and another package
+# still links the old version). It rebuilds anything broken.
+revdep-rebuild</code></pre>
+
+<h3>Clean Portage build files</h3>
+
+<pre><code># /var/tmp/portage holds the working directories for every compile.
+# Portage should clean up after itself, but interrupted builds can
+# leave behind gigabytes of temp files.
+rm -rf /var/tmp/portage/*</code></pre>
+
+<h3>Clean source tarballs (distfiles)</h3>
+
+<pre><code># eclean-dist removes old/unused source tarballs from /var/cache/distfiles.
+# --deep removes everything not needed by currently-installed package versions.
+# Install gentoolkit first if you haven't already.
+emerge -a app-portage/gentoolkit
+eclean-dist --deep</code></pre>
+
+<h3>Clean binary packages (if any)</h3>
+
+<pre><code># If you ever built binpkgs (--buildpkg), this removes stale ones
+eclean-pkg --deep</code></pre>
+
+<h3>Remove old kernels</h3>
+
+<pre><code># If you installed dist-kernel and upgraded, old versions pile up.
+# List installed kernels:
+eselect kernel list
+
+# Remove a specific old version (replace with actual version):
+emerge --deselect sys-kernel/gentoo-kernel:&lt;old-version&gt;
+emerge --depclean
+
+# Clean old kernel sources from /usr/src:
+rm -rf /usr/src/linux-&lt;old-version&gt;
+
+# Clean leftover modules:
+rm -rf /lib/modules/&lt;old-version&gt;
+
+# Rebuild GRUB menu to remove stale entries:
+grub-mkconfig -o /boot/grub/grub.cfg</code></pre>
+
+<h3>Quick cleanup one-liner</h3>
+
+<pre><code># The "daily driver" cleanup — run after any major emerge session:
+emerge --ask --depclean &amp;&amp; revdep-rebuild &amp;&amp; eclean-dist --deep &amp;&amp; rm -rf /var/tmp/portage/*</code></pre>
 
 <hr>
 

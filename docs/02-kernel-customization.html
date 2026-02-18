@@ -47,106 +47,201 @@
 <h1>Kernel Customization — AMD 9800X3D + RX 7800 XT</h1>
 
 <blockquote>
-You installed with a binary kernel (<code>gentoo-kernel-bin</code>). This guide walks you
-through building a <strong>custom kernel</strong> tuned for your exact hardware on <strong>OpenRC</strong>.
+You installed with the <strong>distribution kernel</strong> (<code>sys-kernel/gentoo-kernel</code>) —
+this is a source-compiled kernel that Portage builds automatically using a default
+config. This guide walks you through customizing that kernel for your exact
+hardware on <strong>OpenRC</strong>, with explanations for every step so you understand what's
+happening under the hood.
 </blockquote>
 
 <hr>
 
-<h2>1 — Install kernel sources &amp; tools</h2>
+<h2>What is a distribution kernel vs a custom kernel?</h2>
 
-<pre><code>emerge -a sys-kernel/gentoo-sources sys-kernel/genkernel
-emerge -a sys-apps/pciutils     # for lspci
+<p><code>sys-kernel/gentoo-kernel</code> is a <strong>dist-kernel</strong>: Portage compiles
+it from source using a generic <code>.config</code> that tries to support all hardware.
+It works, but it builds thousands of drivers you don't need — your kernel is
+bloated, boot is slower, and hardware-specific tuning (CPU scheduler, GPU
+firmware loading, power management) is set to safe defaults rather than optimal
+ones.</p>
 
-# Build tools needed for 'make menuconfig' and kernel compilation
+<p>A <strong>custom kernel</strong> means you start from the dist-kernel's working config and
+strip it down to just your hardware, while also enabling features tuned for
+desktop responsiveness (1000 Hz timer, voluntary preemption, AMD P-State EPP).</p>
+
+<h2>1 — Install kernel sources &amp; build tools</h2>
+
+<pre><code># ── Install the raw kernel source tree ──────────────────────────────
+# This gives you /usr/src/linux-X.Y.Z-gentoo with the full kernel source.
+# Unlike gentoo-kernel (dist-kernel), gentoo-sources does NOT auto-compile —
+# you control the build process yourself.
+emerge -a sys-kernel/gentoo-sources
+
+# ── Install genkernel, the Gentoo kernel build helper ───────────────
+# genkernel can generate an initramfs (initial RAM filesystem) that loads
+# modules needed at early boot (NVMe driver, filesystem, etc.) before the
+# real root filesystem is available.
+emerge -a sys-kernel/genkernel
+
+# ── PCI utility — you'll use this to identify your exact hardware ───
+# lspci lists every device on your PCI/PCIe bus so you know exactly which
+# kernel drivers to enable.
+emerge -a sys-apps/pciutils
+
+# ── Build tools required by the kernel's Makefile ───────────────────
+# ncurses  → provides the terminal UI for 'make menuconfig'
+# flex     → lexical analyser generator (kernel build scripts need it)
+# bison    → parser generator (same reason)
+# bc       → calculator used by kernel build for version arithmetic
+# elfutils → ELF binary tools; the kernel links against libelf
 emerge -a sys-libs/ncurses sys-devel/flex sys-devel/bison sys-devel/bc dev-libs/elfutils
 
-# Symlink to the latest sources
-eselect kernel list
+# ── Point the /usr/src/linux symlink at the new sources ─────────────
+# Gentoo can have multiple kernel source trees installed side by side.
+# eselect kernel manages which one /usr/src/linux points to.
+eselect kernel list              # shows available source trees
 eselect kernel set 1             # pick the version you want
-ls -l /usr/src/linux              # should point to your new sources</code></pre>
 
-<h2>2 — Start from a known-good config</h2>
+# Verify the symlink:
+ls -l /usr/src/linux
+# Should show: /usr/src/linux -> linux-X.Y.Z-gentoo</code></pre>
 
-<p>Use the running binary kernel's config as a starting point:</p>
+<h2>2 — Start from your dist-kernel's config</h2>
+
+<p>Since you compiled <code>gentoo-kernel</code> from source, its <code>.config</code> is known to
+work on your hardware. We'll use that as the starting point rather than
+configuring from scratch (which would be thousands of yes/no decisions).</p>
 
 <pre><code>cd /usr/src/linux
-# Copy the running config
-cp /proc/config.gz .
-gunzip config.gz
-mv config .config
 
-# Update for new kernel options
+# ── Copy the running kernel's config ────────────────────────────────
+# The kernel exposes its own build config at /proc/config.gz (compressed).
+# This is the exact config that's running right now — guaranteed to boot.
+cp /proc/config.gz .
+gunzip config.gz                 # decompress it
+mv config .config                # the kernel build system reads .config
+
+# ── Update the config for the new kernel version ────────────────────
+# 'make olddefconfig' reads .config, keeps every existing setting, and
+# automatically sets any NEW options (added in the newer kernel) to their
+# default values. This is safe — you won't lose any working settings.
 make olddefconfig</code></pre>
 
-<h2>3 — Menuconfig — key options for your rig</h2>
+<h2>3 — Menuconfig — tuning for your hardware</h2>
+
+<p><code>make menuconfig</code> opens an interactive terminal menu where you can
+enable/disable kernel features. Navigate with arrow keys, Enter to drill in,
+<code>Y</code> = built-in, <code>M</code> = module, <code>N</code> = disable, <code>/</code> = search.</p>
 
 <pre><code>make menuconfig</code></pre>
 
-<p>Work through each section below. Items marked <strong><code>[*]</code></strong> should be built-in;
-<strong><code>[M]</code></strong> can be a module.</p>
+<p>Work through each section below. Items marked <strong><code>[*]</code></strong> should be built-in
+(compiled directly into the kernel image — available immediately at boot);
+<strong><code>[M]</code></strong> can be a module (loaded on demand — saves memory when not in use).</p>
 
-<h3>Processor</h3>
+<h3>Processor — optimise for Zen 5</h3>
 
-<pre><code>Processor type and features ---&gt;
+<pre><code># These settings tell the kernel it's running on an AMD Zen CPU and should
+# use AMD-specific optimizations for scheduling, thermal management, etc.
+Processor type and features ---&gt;
     Processor family          → (AMD Zen 3/Zen 4/Zen 5 — pick the best match)
+                                 # Tells GCC to use AMD-specific instruction scheduling
     [*] AMD ACPI2Platform and target IDs
+                                 # Lets the kernel talk to AMD platform firmware
     [*] SMT (Hyperthreading) scheduler support
+                                 # Teaches the scheduler that 2 threads share one core
+                                 # (important for the 9800X3D's 8C/16T topology)
     [*] Machine Check / overheating reporting
+                                 # Reports hardware errors (bad RAM, CPU overheating)
     Preemption Model          → Voluntary Kernel Preemption (Desktop)
-    Timer frequency           → 1000 Hz                (good for desktop responsiveness)</code></pre>
+                                 # Allows the kernel to be interrupted more often, giving
+                                 # smoother desktop responsiveness (less input lag)
+    Timer frequency           → 1000 Hz
+                                 # How often the kernel "ticks" — 1000 Hz means it checks
+                                 # for pending work every 1ms. Great for desktop; overkill
+                                 # for a server (which would use 250 Hz)</code></pre>
 
-<h3>Power / Thermal</h3>
+<h3>Power / Thermal — AMD P-State</h3>
 
-<pre><code>Power management and ACPI ---&gt;
-    [*] ACPI support
-    [*]   Processor P-States driver
+<pre><code># AMD P-State is the modern CPU frequency scaling driver for Zen CPUs.
+# It replaces the older acpi-cpufreq driver and gives finer-grained control
+# over clock speeds and power consumption.
+Power management and ACPI ---&gt;
+    [*] ACPI support                       # Advanced Configuration and Power Interface
+    [*]   Processor P-States driver        # Base frequency scaling support
     CPU Frequency scaling ---&gt;
-        Default governor      → schedutil
-        [*] AMD P-State driver         (CONFIG_X86_AMD_PSTATE=y)
-        [*]   AMD P-State EPP          (preferred for Zen 5)</code></pre>
+        Default governor      → schedutil  # Lets the scheduler directly control CPU speed
+                                           # (best for desktop: ramps up fast when needed)
+        [*] AMD P-State driver             (CONFIG_X86_AMD_PSTATE=y)
+                                           # The AMD-specific frequency driver
+        [*]   AMD P-State EPP             # "Energy Performance Preference" — the preferred
+                                           # mode for Zen 5; lets the CPU hardware make fast
+                                           # frequency decisions with firmware assistance</code></pre>
 
 <h3>GPU — AMDGPU (RX 7800 XT / RDNA 3 / Navi 32)</h3>
 
-<pre><code>Device Drivers ---&gt;
+<pre><code># The AMDGPU driver is the open-source kernel driver for all modern AMD GPUs.
+# It provides DRM (Direct Rendering Manager) access, display output, and
+# hardware video acceleration.
+Device Drivers ---&gt;
     Graphics support ---&gt;
         &lt;*&gt; Direct Rendering Manager (DRM)
-        &lt;M&gt; AMD GPU                  (CONFIG_DRM_AMDGPU=m)
+                                           # Core subsystem for GPU access from userspace
+        &lt;M&gt; AMD GPU                       (CONFIG_DRM_AMDGPU=m)
+                                           # Module — loads on demand when the GPU is detected
             [*] Enable amdgpu support for NAVI10 and newer
+                                           # Base RDNA support
             [*] Enable amdgpu support for GFX11 (RDNA 3)
+                                           # YOUR GPU — RX 7800 XT is GFX11 / Navi 32
         Display Engine ---&gt;
-            [*] AMD DC — Display Core  (CONFIG_DRM_AMD_DC=y)
-        [*] Framebuffer Console support
+            [*] AMD DC — Display Core      (CONFIG_DRM_AMD_DC=y)
+                                           # AMD's display controller — handles monitors,
+                                           # resolution, refresh rate, HDR
+        [*] Framebuffer Console support    # Text console on your GPU (boot messages)
 
     Firmware Drivers ---&gt;
-        [*] AMD SoC firmware loading support</code></pre>
+        [*] AMD SoC firmware loading support
+                                           # Loads GPU firmware blobs from /lib/firmware</code></pre>
 
 <blockquote>
 <strong>Firmware blobs</strong>: The kernel needs firmware from <code>sys-kernel/linux-firmware</code>.<br>
-Key files: <code>amdgpu/navi32_*</code> — make sure they are in <code>/lib/firmware/amdgpu/</code>.
+Key files for your GPU: <code>amdgpu/navi32_*</code> — make sure they're in
+<code>/lib/firmware/amdgpu/</code>. Without them, the GPU won't initialise.
 </blockquote>
 
-<h3>Storage</h3>
+<h3>Storage — NVMe + SATA DVD</h3>
 
-<pre><code>Device Drivers ---&gt;
-    &lt;*&gt; NVMe support                     (CONFIG_BLK_DEV_NVME=y)  — built-in for root
-    &lt;*&gt; Serial ATA / AHCI               (CONFIG_SATA_AHCI=y)     — DVD drive on SATA
+<pre><code># NVMe is built-in [*] because your root filesystem is on an NVMe SSD —
+# the kernel needs the driver available BEFORE it can mount root.
+# SATA/AHCI is for the DVD drive connected via SATA.
+Device Drivers ---&gt;
+    &lt;*&gt; NVMe support                      (CONFIG_BLK_DEV_NVME=y)
+                                           # Built-in — required to mount root from NVMe
+    &lt;*&gt; Serial ATA / AHCI                (CONFIG_SATA_AHCI=y)
+                                           # SATA controller driver for DVD drive
     SCSI ---&gt;
-        &lt;*&gt; SCSI CDROM support           (CONFIG_BLK_DEV_SR=y)
-        &lt;*&gt; SCSI generic support         (CONFIG_CHR_DEV_SG=y)    — burning</code></pre>
+        &lt;*&gt; SCSI CDROM support            (CONFIG_BLK_DEV_SR=y)
+                                           # Makes the DVD drive appear as /dev/sr0
+        &lt;*&gt; SCSI generic support          (CONFIG_CHR_DEV_SG=y)
+                                           # Allows burning software to send raw SCSI
+                                           # commands to the DVD drive</code></pre>
 
 <h3>USB</h3>
 
-<pre><code>Device Drivers ---&gt;
+<pre><code># xHCI is the USB 3.x host controller — handles all USB ports on modern boards.
+# EHCI is the fallback for USB 2.0 devices.
+Device Drivers ---&gt;
     USB support ---&gt;
-        &lt;*&gt; xHCI HCD (USB 3.x)          (CONFIG_USB_XHCI_HCD=y)
+        &lt;*&gt; xHCI HCD (USB 3.x)            (CONFIG_USB_XHCI_HCD=y)
         &lt;*&gt; EHCI HCD (USB 2.0)</code></pre>
 
 <h3>Networking (X870 Taichi Lite)</h3>
 
-<p>The board typically has <strong>Intel I226-V 2.5 GbE</strong> and optional WiFi (Intel AX210 / AX411).</p>
+<p>The board has <strong>Intel I226-V 2.5 GbE</strong> and optional WiFi (Intel AX210/AX411).</p>
 
-<pre><code>Device Drivers ---&gt;
+<pre><code># igc is the Intel I225/I226 ethernet driver. As a module [M] it loads
+# automatically when the NIC is detected.
+Device Drivers ---&gt;
     Ethernet driver support ---&gt;
         Intel devices ---&gt;
             &lt;M&gt; Intel(R) 2.5G Ethernet (igc)    (CONFIG_IGC=m)
@@ -155,84 +250,152 @@ Key files: <code>amdgpu/navi32_*</code> — make sure they are in <code>/lib/fir
     Network device support ---&gt;
         Wireless LAN ---&gt;
             &lt;M&gt; Intel WiFi (iwlwifi)              (CONFIG_IWLWIFI=m)
-            [*]   Intel MVM firmware               (CONFIG_IWLMVM=m)</code></pre>
+                                                   # Base Intel WiFi driver
+            [*]   Intel MVM firmware               (CONFIG_IWLMVM=m)
+                                                   # Firmware interface for AX210/AX411</code></pre>
 
-<blockquote>Run <code>lspci -k</code> to confirm exact NIC/WiFi chipset names.</blockquote>
+<blockquote>Run <code>lspci -k</code> to confirm your exact NIC/WiFi chipset. The <code>-k</code> flag
+shows which kernel driver is currently bound to each device — useful for
+verifying you have the right modules enabled.</blockquote>
 
 <h3>Audio (Realtek ALC codec via AMD ACP/HD-Audio)</h3>
 
-<pre><code>Device Drivers ---&gt;
+<pre><code># HD-Audio is the standard audio interface on modern motherboards.
+# The Realtek codec is the actual audio chip on your board.
+Device Drivers ---&gt;
     Sound card support ---&gt;
         &lt;M&gt; ALSA ---&gt;
             HD-Audio ---&gt;
-                &lt;M&gt; HD Audio PCI           (CONFIG_SND_HDA_INTEL=m)
-                &lt;M&gt; Realtek HD-audio codec (CONFIG_SND_HDA_CODEC_REALTEK=m)
-                [*] Build all HD-audio codec support  (safe catch-all)</code></pre>
+                &lt;M&gt; HD Audio PCI            (CONFIG_SND_HDA_INTEL=m)
+                                             # PCI bus driver for HD-Audio controllers
+                &lt;M&gt; Realtek HD-audio codec  (CONFIG_SND_HDA_CODEC_REALTEK=m)
+                                             # Codec driver for your specific audio chip
+                [*] Build all HD-audio codec support
+                                             # Safe catch-all — includes HDMI audio from
+                                             # the GPU, useful for monitor speakers</code></pre>
 
 <h3>Bluetooth (if present)</h3>
 
-<pre><code>Networking support ---&gt;
+<pre><code># Bluetooth is provided by the Intel WiFi card (combo chip).
+# The HCI USB driver handles the Bluetooth side of the card.
+Networking support ---&gt;
     Bluetooth subsystem support ---&gt;
-        &lt;M&gt; Bluetooth                     (CONFIG_BT=m)
-        &lt;M&gt;   RFCOMM, BNEP, HIDP
-        &lt;M&gt;   Bluetooth HCI USB driver   (CONFIG_BT_HCIBTUSB=m)</code></pre>
+        &lt;M&gt; Bluetooth                      (CONFIG_BT=m)
+        &lt;M&gt;   RFCOMM, BNEP, HIDP          # Profiles: serial, networking, HID
+        &lt;M&gt;   Bluetooth HCI USB driver    (CONFIG_BT_HCIBTUSB=m)
+                                            # USB transport for Bluetooth hardware</code></pre>
 
-<h3>Misc important</h3>
+<h3>Filesystems &amp; misc</h3>
 
-<pre><code>File systems ---&gt;
-    &lt;*&gt; EXT4           # root fs (or btrfs/xfs — match yours)
-    &lt;*&gt; VFAT           # EFI System Partition
-    &lt;*&gt; FUSE
+<pre><code># Match your root filesystem type. EXT4 is built-in because the kernel needs
+# it to mount root. VFAT is for the EFI System Partition. FUSE allows
+# userspace filesystems like ntfs3g.
+File systems ---&gt;
+    &lt;*&gt; EXT4                              # root fs (change to btrfs/xfs if that's yours)
+    &lt;*&gt; VFAT                              # EFI System Partition (ESP) — must be built-in
+    &lt;*&gt; FUSE                              # Filesystem in Userspace (for ntfs3g, sshfs, etc.)
     Pseudo filesystems ---&gt;
-        [*] /proc, /sys, tmpfs, devtmpfs
+        [*] /proc, /sys, tmpfs, devtmpfs   # Virtual filesystems the OS depends on
 
+# Cgroups and namespaces are used by containerisation (docker, systemd-nspawn)
+# and some desktop tools. Safe to enable even if you don't use containers.
 General setup ---&gt;
     [*] Control Group support (cgroups)
     [*] Namespaces support
 
+# Keyring support is needed by elogind (seat management on OpenRC).
 Security ---&gt;
-    [*] Enable access key retention support   # needed by elogind</code></pre>
+    [*] Enable access key retention support</code></pre>
 
-<h2>4 — Build &amp; install</h2>
+<h2>4 — Build &amp; install the kernel</h2>
 
 <pre><code>cd /usr/src/linux
 
-# Compile (uses all 16 threads)
+# ── Compile the kernel ──────────────────────────────────────────────
+# -j16 runs 16 parallel compile jobs (one per thread on your 8C/16T CPU).
+# This takes 5-15 minutes depending on how many drivers you left enabled.
 make -j16
 
-# Install modules
+# ── Install kernel modules ─────────────────────────────────────────
+# Modules ([M] items) get copied to /lib/modules/&lt;kernel-version&gt;/
+# The kernel loads these on demand when hardware is detected.
 make modules_install
 
-# Install kernel image
-make install          # copies to /boot
+# ── Install the kernel image ───────────────────────────────────────
+# Copies the compressed kernel (bzImage) to /boot/ and creates a
+# System.map (symbol table used for debugging kernel panics).
+make install
 
-# If you use an initramfs (genkernel):
+# ── Generate an initramfs (initial RAM filesystem) ──────────────────
+# The initramfs is a tiny filesystem loaded into RAM at boot. It contains
+# modules needed before the real root filesystem is available (e.g. NVMe
+# driver, filesystem driver). genkernel builds it from your .config.
 genkernel --install --kernel-config=/usr/src/linux/.config initramfs</code></pre>
 
-<h2>5 — Update bootloader</h2>
+<h2>5 — Update the bootloader</h2>
 
-<pre><code>grub-mkconfig -o /boot/grub/grub.cfg</code></pre>
+<pre><code># ── Regenerate GRUB's config ────────────────────────────────────────
+# GRUB scans /boot/ for kernel images and creates menu entries.
+# After installing a new kernel, you must re-run this so GRUB knows about it.
+grub-mkconfig -o /boot/grub/grub.cfg
 
-<p>Verify the new entry shows up:</p>
-
-<pre><code>grep menuentry /boot/grub/grub.cfg</code></pre>
+# ── Verify the new kernel shows up in the boot menu ────────────────
+# Look for a menuentry line with your new kernel version number.
+grep menuentry /boot/grub/grub.cfg</code></pre>
 
 <h2>6 — Reboot &amp; validate</h2>
 
-<pre><code>reboot
+<pre><code># ── Reboot into the new kernel ──────────────────────────────────────
+reboot
 
-# After reboot:
-uname -r                        # should show your new kernel version
-dmesg | grep -i amdgpu          # GPU driver loaded?
-dmesg | grep -i microcode       # CPU microcode updated?
-lsmod | grep -E "amdgpu|snd"   # modules loaded?</code></pre>
+# ── After reboot — verify everything is working ────────────────────
 
-<h2>7 — Clean up the binary kernel (optional)</h2>
+# Check the running kernel version matches what you just built:
+uname -r
 
-<p>Once you're confident the custom kernel is stable:</p>
+# Verify the AMDGPU driver loaded for your RX 7800 XT:
+dmesg | grep -i amdgpu
+# Should show: "amdgpu ... Navi32 ... initialized"
 
-<pre><code>emerge --deselect sys-kernel/gentoo-kernel-bin
-emerge --depclean</code></pre>
+# Verify CPU microcode was loaded:
+dmesg | grep -i microcode
+# Should show: "microcode: updated early"
+
+# Check that key modules are loaded:
+lsmod | grep -E "amdgpu|snd|igc"
+# amdgpu  → GPU driver
+# snd     → audio
+# igc     → ethernet</code></pre>
+
+<h2>7 — Clean up the dist-kernel</h2>
+
+<p>Once you've confirmed the custom kernel is stable (use it for a few days),
+you can remove the dist-kernel to avoid confusion:</p>
+
+<pre><code># ── Tell Portage you no longer want gentoo-kernel in your @world set ─
+# 'deselect' removes it from the list of explicitly requested packages,
+# but doesn't uninstall it yet.
+emerge --deselect sys-kernel/gentoo-kernel
+
+# ── Remove orphaned packages ───────────────────────────────────────
+# depclean uninstalls packages that are no longer needed by anything in
+# your @world set. This will remove the old dist-kernel.
+emerge --ask --depclean
+
+# ── Clean up old kernel files from /boot ────────────────────────────
+# List what's in /boot to identify old kernel images:
+ls /boot/
+# Remove old vmlinuz, System.map, config, and initramfs files manually:
+# rm /boot/vmlinuz-X.Y.Z-gentoo-dist  (etc.)
+
+# ── Remove old kernel modules ──────────────────────────────────────
+# Each kernel version has its own /lib/modules/&lt;version&gt;/ directory.
+# Remove the ones you're no longer booting:
+ls /lib/modules/
+# rm -rf /lib/modules/X.Y.Z-gentoo-dist/
+
+# ── Regenerate GRUB so the old entry disappears ────────────────────
+grub-mkconfig -o /boot/grub/grub.cfg</code></pre>
 
 <hr>
 
