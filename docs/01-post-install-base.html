@@ -192,8 +192,31 @@ USE="
 
 <h2>3 — Rebuild @world with the new USE flags</h2>
 
-<pre><code>emerge --ask --update --deep --newuse @world
-emerge --ask --depclean            # remove orphaned packages
+<pre><code>emerge --ask --update --deep --newuse @world</code></pre>
+
+<h3>Circular dependency: dev-python/pillow &amp; truetype</h3>
+
+<p>If <code>emerge @world</code> fails with a circular-dependency error mentioning
+<code>dev-python/pillow</code> and suggests changing <code>USE="truetype"</code>, break
+the cycle by temporarily disabling that flag for Pillow:</p>
+
+<pre><code># Create the per-package USE override (file or directory both work)
+echo "dev-python/pillow -truetype" &gt;&gt; /etc/portage/package.use
+
+# Now re-run the world update — the cycle is broken
+emerge --ask --update --deep --newuse @world</code></pre>
+
+<blockquote>
+<strong>What does this do?</strong> The <code>-truetype</code> flag tells Portage to
+build <code>dev-python/pillow</code> without FreeType/TrueType font support, which
+removes the dependency that causes the loop. Once the rest of the system is
+up-to-date you can re-enable it if you need TrueType rendering in Pillow:
+<pre><code># Re-enable truetype after the world update is complete
+sed -i 's/dev-python\/pillow -truetype/dev-python\/pillow truetype/' /etc/portage/package.use
+emerge --ask --oneshot dev-python/pillow</code></pre>
+</blockquote>
+
+<pre><code>emerge --ask --depclean            # remove orphaned packages
 
 # revdep-rebuild needs gentoolkit — install it first
 emerge -a app-portage/gentoolkit
