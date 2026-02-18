@@ -111,138 +111,252 @@ USE="
 
 <h2>1 — Verify profile &amp; USE flags</h2>
 
-<pre><code>eselect profile show
+<pre><code># eselect profile show — displays which Portage profile is active.
+# The profile controls which base USE flags and package masks are applied
+# system-wide. You want a desktop/plasma profile for KDE.
+eselect profile show
 # Should be something like: default/linux/amd64/23.0/desktop/plasma (or /desktop/plasma/openrc)
 
+# grep ^USE — shows just the USE flag lines from your make.conf.
+# These flags tell Portage which optional features to enable/disable
+# when compiling packages.
 cat /etc/portage/make.conf | grep ^USE
 # Confirm kde, plasma, qt6, wayland, pipewire, etc. are set</code></pre>
 
 <h2>2 — Install Plasma &amp; essential apps</h2>
 
-<pre><code># Core Plasma desktop
+<pre><code># ── Core Plasma desktop ─────────────────────────────────────────────
+# plasma-meta is a "meta" package — it doesn't contain code itself but
+# depends on all the packages that make up a full Plasma desktop (shell,
+# KWin compositor, system settings, Breeze theme, etc.).
+# -a (--ask) shows you the full merge list before committing.
 emerge -a kde-plasma/plasma-meta
 
-# SDDM display manager
+# ── SDDM display manager ───────────────────────────────────────────
+# SDDM (Simple Desktop Display Manager) provides the graphical login screen.
+# It's the recommended DM for Plasma — it supports Wayland sessions natively.
 emerge -a x11-misc/sddm
+
+# rc-update add — registers a service to start at a specific runlevel.
+# "xdm" is the generic display manager service; "default" is the runlevel
+# that runs during normal multi-user boot.
 rc-update add xdm default
-# Tell xdm to use sddm
+
+# Tell the xdm init script which actual display manager to launch.
+# Without this, it might try to start xdm, gdm, or whatever was set before.
 echo 'DISPLAYMANAGER="sddm"' &gt; /etc/conf.d/xdm</code></pre>
 
 <h3>Recommended KDE apps</h3>
 
-<pre><code># File manager
+<pre><code># Each emerge -a installs one app and its dependencies.
+# Portage will ask for confirmation before each merge.
+
+# Dolphin — KDE's file manager (integrates with KIO for network shares,
+# trash, thumbnails, and Baloo file search)
 emerge -a kde-apps/dolphin
 
-# Terminal
+# Konsole — KDE's terminal emulator (supports tabs, profiles, split views)
 emerge -a kde-apps/konsole
 
-# Text editor
+# Kate — advanced text editor with syntax highlighting, built-in terminal,
+# and LSP support (useful for quick config file editing)
 emerge -a kde-apps/kate
 
-# System monitor
+# Plasma System Monitor — shows CPU, RAM, GPU, disk, and network usage
+# with customisable dashboard panels
 emerge -a kde-plasma/plasma-systemmonitor
 
-# Archive manager
+# Ark — archive manager that handles tar.gz, zip, 7z, rar, etc.
 emerge -a kde-apps/ark
 
-# Screenshot
+# Spectacle — KDE's screenshot tool (region, window, full screen, timer)
 emerge -a kde-apps/spectacle
 
-# Image viewer
+# Gwenview — lightweight image viewer with basic editing (crop, rotate)
 emerge -a kde-apps/gwenview
 
-# Media player (VLC handles DVDs nicely)
+# VLC — plays virtually any media format including DVDs, Blu-ray, streams.
+# Uses its own codec bundle so it doesn't depend on system-wide codec packages.
 emerge -a media-video/vlc
 
-# Web browser
+# Firefox — full-featured web browser. On Wayland, set MOZ_ENABLE_WAYLAND=1
+# in your environment to run it natively (Plasma usually sets this for you).
 emerge -a www-client/firefox</code></pre>
 
 <p>Or install a broader bundle:</p>
 
-<pre><code>emerge -a kde-apps/kde-apps-meta   # includes most of the above and more</code></pre>
+<pre><code># kde-apps-meta pulls in most KDE applications (Dolphin, Konsole, Kate,
+# Okular, Gwenview, etc.) in one command. Larger download/compile,
+# but convenient if you want the full KDE experience.
+emerge -a kde-apps/kde-apps-meta</code></pre>
 
 <h2>3 — GPU acceleration (Mesa / Vulkan)</h2>
 
-<pre><code>emerge -a media-libs/mesa media-libs/vulkan-loader dev-util/vulkan-tools
+<pre><code># ── Mesa — the open-source OpenGL / Vulkan implementation ───────────
+# Mesa provides the userspace graphics drivers. For AMD GPUs it includes:
+#   radeonsi  → OpenGL driver (used by desktop compositors, games, apps)
+#   RADV      → Vulkan driver (used by modern games, wine/proton, GPU compute)
+# vulkan-loader is the dispatch library that routes Vulkan calls to RADV.
+# vulkan-tools provides vulkaninfo for diagnostics.
+emerge -a media-libs/mesa media-libs/vulkan-loader dev-util/vulkan-tools
 
-# Verify Vulkan sees the 7800 XT
+# vulkaninfo queries the GPU through the Vulkan driver.
+# --summary gives a compact overview: driver version, device name, API version.
 vulkaninfo --summary
 # Should list "AMD Radeon RX 7800 XT (RADV NAVI32)"
 
-# For glxinfo (OpenGL diagnostics)
+# mesa-progs provides glxinfo and glxgears for OpenGL diagnostics.
 emerge -a x11-apps/mesa-progs
+
+# glxinfo queries the OpenGL driver. Grep for the renderer string
+# to confirm the GPU is using the hardware-accelerated driver (not llvmpipe).
 glxinfo | grep "OpenGL renderer"
-# Should show "AMD Radeon RX 7800 XT"</code></pre>
+# Should show "AMD Radeon RX 7800 XT" — if it says "llvmpipe" something is wrong</code></pre>
 
 <h2>4 — PipeWire audio</h2>
 
-<p>PipeWire replaces PulseAudio and handles ALSA/JACK/Bluetooth audio.</p>
+<p>PipeWire is a modern audio/video server that replaces PulseAudio and JACK.
+It provides drop-in compatibility with both, so apps that expect PulseAudio
+work transparently. WirePlumber is PipeWire's session manager — it handles
+policy decisions like which device is the default sink.</p>
 
-<pre><code>emerge -a media-video/pipewire media-video/wireplumber
+<pre><code># Install PipeWire (the server) and WirePlumber (the session/policy manager).
+emerge -a media-video/pipewire media-video/wireplumber
 
-# Plasma starts PipeWire automatically via XDG autostart.
-# After logging in, verify with wpctl (provided by wireplumber):
+# Plasma starts PipeWire automatically via XDG autostart desktop files
+# installed to /etc/xdg/autostart/. No init script needed — it runs
+# per-user, not as a system daemon.
+
+# After logging in to Plasma, verify audio is working:
+# wpctl is WirePlumber's CLI tool. "status" shows the audio graph:
+# sources (microphones), sinks (speakers/headphones), and active streams.
 wpctl status
 # Should show PipeWire as the running service with audio sinks listed</code></pre>
 
 <h2>5 — Bluetooth</h2>
 
-<pre><code>emerge -a net-wireless/bluez
+<pre><code># ── BlueZ — the Linux Bluetooth protocol stack ─────────────────────
+# Provides the bluetoothd daemon and CLI tools (bluetoothctl).
+# Plasma's Bluetooth applet communicates with bluetoothd over D-Bus.
+emerge -a net-wireless/bluez
+
+# Register the bluetooth service to start at boot ("default" runlevel).
 rc-update add bluetooth default
+
+# Start it right now without rebooting.
+# rc-service sends start/stop/restart commands to OpenRC services.
 rc-service bluetooth start
 
-# Plasma's Bluetooth applet should now discover devices.</code></pre>
+# Plasma's Bluetooth applet in the system tray should now be able
+# to discover and pair devices. You can also use the CLI:
+#   bluetoothctl → scan on → pair XX:XX:XX:XX:XX:XX → connect ...</code></pre>
 
 <h2>6 — NetworkManager GUI</h2>
 
-<p>Already enabled in post-install-base. Plasma's network applet uses it automatically.</p>
+<p>Already enabled in post-install-base. Plasma's network applet talks to
+NetworkManager over D-Bus — it shows WiFi networks, VPN connections, and
+wired status automatically.</p>
 
-<pre><code>nmcli device status          # quick CLI check</code></pre>
+<pre><code># nmcli is NetworkManager's command-line interface.
+# "device status" shows every network interface and its connection state.
+nmcli device status
+
+# Other useful nmcli commands:
+#   nmcli connection show                → list saved connections
+#   nmcli device wifi list               → scan for WiFi networks
+#   nmcli device wifi connect SSID password PASS  → connect to WiFi</code></pre>
 
 <h2>7 — DVD playback in KDE</h2>
 
-<pre><code># Already installed in base: app-cdr/cdrtools, media-libs/libdvdcss
-# VLC plays DVDs out of the box:
+<pre><code># cdrtools and libdvdcss were installed in the base guide.
+# libdvdcss handles CSS decryption — without it, most commercial DVDs
+# refuse to play (they're encrypted with Content Scramble System).
+
+# VLC has built-in DVD menu navigation and codec support:
+# dvd:// tells VLC to use the DVD protocol; /dev/sr0 is the disc drive.
 vlc dvd:///dev/sr0</code></pre>
 
 <h2>8 — Theming &amp; look</h2>
 
-<pre><code># Breeze is installed with Plasma; for extra icon packs:
+<pre><code># ── Breeze icons ────────────────────────────────────────────────────
+# Breeze is Plasma's default theme (installed with plasma-meta).
+# breeze-icons is the icon theme — it may already be installed as a dep,
+# but emerging it explicitly ensures the full set is available.
 emerge -a kde-frameworks/breeze-icons
 
-# Kvantum for advanced Qt theming (optional):
+# ── Kvantum (optional) ──────────────────────────────────────────────
+# Kvantum is an SVG-based theme engine for Qt. It lets you apply
+# third-party themes that go beyond what Breeze offers (translucency,
+# blur, custom shapes). Configure in System Settings → Application Style.
 emerge -a x11-themes/kvantum</code></pre>
 
 <h2>9 — Wayland vs X11</h2>
 
-<p>SDDM lets you choose the session type at login:</p>
+<p>SDDM lets you choose the session type at login. Click the session selector
+in the bottom-left corner of the SDDM screen:</p>
 <ul>
-  <li><strong>Plasma (Wayland)</strong> — default, recommended for RX 7800 XT / AMDGPU.</li>
-  <li><strong>Plasma (X11)</strong> — fallback if you hit app-compat issues.</li>
+  <li><strong>Plasma (Wayland)</strong> — default, recommended for RX 7800 XT / AMDGPU.
+      Wayland gives better per-monitor scaling, lower input latency, and
+      eliminates screen tearing without a compositor.</li>
+  <li><strong>Plasma (X11)</strong> — fallback if you hit app-compat issues (some older
+      apps, screen sharing in certain apps, or NVIDIA-specific tools).</li>
 </ul>
 
 <p>Confirm you're running Wayland inside a session:</p>
 
-<pre><code>echo $XDG_SESSION_TYPE
+<pre><code># $XDG_SESSION_TYPE is set by elogind when your session starts.
+# Plasma on Wayland sets it to "wayland"; X11 sets it to "x11".
+echo $XDG_SESSION_TYPE
 # → wayland</code></pre>
 
 <h2>10 — Performance tweaks</h2>
 
 <h3>VM writeback (reduce SSD wear)</h3>
 
-<pre><code>echo 'vm.dirty_writeback_centisecs = 6000' &gt;&gt; /etc/sysctl.conf
+<pre><code># dirty_writeback_centisecs controls how often the kernel flushes "dirty"
+# (modified) pages from RAM to disk. Default is 500 (5 seconds).
+# Setting it to 6000 (60 seconds) batches more writes together,
+# reducing SSD write amplification and wear. Safe for desktops —
+# you'd lose at most 60s of buffered writes on a hard crash.
+echo 'vm.dirty_writeback_centisecs = 6000' &gt;&gt; /etc/sysctl.conf
+
+# sysctl -p reloads all settings from /etc/sysctl.conf without rebooting.
 sysctl -p</code></pre>
 
 <h3>AMDGPU power profile (performance when plugged in)</h3>
 
-<pre><code>echo "high" &gt; /sys/class/drm/card1/device/power_dpm_force_performance_level
-# To persist, add to a local OpenRC script or udev rule.</code></pre>
+<pre><code># The AMDGPU driver exposes power management via sysfs.
+# power_dpm_force_performance_level controls the GPU's clock behaviour:
+#   auto    → driver decides (default, good for power saving)
+#   low     → force lowest clocks (silent/cool)
+#   high    → force highest clocks (max performance, more heat/power)
+#   manual  → lets you set exact clock speeds
+# "high" is useful for gaming or GPU-heavy tasks:
+echo "high" &gt; /sys/class/drm/card1/device/power_dpm_force_performance_level
+
+# This setting resets on reboot. To persist it, create a local OpenRC
+# script in /etc/local.d/ (files ending in .start run at boot):
+#   echo 'echo "high" > /sys/class/drm/card1/device/power_dpm_force_performance_level' \
+#     > /etc/local.d/amdgpu-perf.start
+#   chmod +x /etc/local.d/amdgpu-perf.start</code></pre>
 
 <h3>Zram swap (nice for compiles)</h3>
 
-<pre><code>emerge -a sys-block/zram-init
+<pre><code># ── Zram — compressed swap in RAM ───────────────────────────────────
+# Zram creates a compressed block device in memory that acts as swap.
+# When RAM fills up during big compiles (e.g. chromium, rust), the kernel
+# compresses and stores pages in zram instead of swapping to your SSD.
+# This is faster than SSD swap and reduces wear.
+emerge -a sys-block/zram-init
+
+# Add to the boot runlevel so it's ready before anything needs swap.
 rc-update add zram-init boot
-# Configure in /etc/conf.d/zram-init</code></pre>
+
+# Configure zram size and algorithm in /etc/conf.d/zram-init.
+# Example: set zram0 to use zstd compression and 50% of RAM:
+#   zram0_comp_algorithm="zstd"
+#   zram0_mem_limit_mb="16384"   # 16 GB (half of 32 GB)
+# Then: rc-service zram-init start</code></pre>
 
 <hr>
 

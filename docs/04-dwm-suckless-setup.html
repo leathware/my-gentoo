@@ -109,44 +109,73 @@ USE="
 
 <h2>1 — Verify profile &amp; USE flags</h2>
 
-<pre><code>eselect profile show
+<pre><code># eselect profile show — displays which Portage profile is active.
+# For DWM you should be on the plain "desktop" profile (NOT plasma).
+# The profile controls base USE flags system-wide.
+eselect profile show
 # Should be: default/linux/amd64/23.0/desktop  (plain desktop, NOT plasma)
 
+# grep ^USE — shows the USE flag lines from your make.conf.
+# These flags control which optional features Portage enables/disables
+# when compiling packages. The DWM profile strips out KDE/Qt/GNOME.
 cat /etc/portage/make.conf | grep ^USE
 # Confirm: X, savedconfig, minimal, -kde, -plasma, -qt5, -qt6</code></pre>
 
 <h2>2 — Install Xorg</h2>
 
-<p>DWM is X11-only. Keep it lean:</p>
+<p>DWM is X11-only (the suckless tools don't support Wayland). Keep it lean:</p>
 
-<pre><code>emerge -a x11-base/xorg-server x11-apps/xinit
+<pre><code># ── X server and xinit ──────────────────────────────────────────────
+# xorg-server is the display server — it manages your screen, input
+# devices, and GPU. xinit provides 'startx', the command you'll use
+# to launch X from a text console (TTY).
+emerge -a x11-base/xorg-server x11-apps/xinit
 
-# X11 utilities used in ~/.xinitrc
+# ── X11 utilities used in ~/.xinitrc ────────────────────────────────
+# xrandr     → query/set screen resolution and refresh rate
+# setxkbmap  → set keyboard layout (e.g. us, gb, de)
+# xsetroot   → set the root window name (dwm reads this for its status bar)
 emerge -a x11-apps/xrandr x11-apps/setxkbmap x11-apps/xsetroot
 
-# Verify the amdgpu DDX driver is pulled in:
+# ── GPU and input drivers ───────────────────────────────────────────
+# xf86-video-amdgpu is the DDX (Device Dependent X) driver for AMD GPUs.
+# It handles 2D acceleration and modesetting in Xorg.
+# xf86-input-libinput is the unified input driver (mouse, keyboard, touchpad).
 emerge -a x11-drivers/xf86-video-amdgpu x11-drivers/xf86-input-libinput</code></pre>
 
-<p>No display manager needed — you'll start X from a TTY with <code>startx</code>.</p>
+<p>No display manager needed — you'll start X from a TTY with <code>startx</code>.
+This keeps the system minimal and avoids running a graphical login daemon.</p>
 
 <h2>3 — Install the suckless trinity: dwm + st + dmenu</h2>
 
-<p>Gentoo's suckless ebuilds support <code>savedconfig</code> — Portage stores your patched
-<code>config.h</code> in <code>/etc/portage/savedconfig/</code> so it survives rebuilds.</p>
+<p>Gentoo's suckless ebuilds support <code>savedconfig</code> — a Portage feature where
+the package's build-time config file (<code>config.h</code> for suckless tools) is saved to
+<code>/etc/portage/savedconfig/</code>. When you re-emerge the package, Portage uses your
+saved version instead of the default, so your customisations survive upgrades.</p>
 
-<pre><code>emerge -a x11-wm/dwm x11-terms/st x11-misc/dmenu</code></pre>
+<pre><code># ── Install the three core suckless tools ───────────────────────────
+# dwm   → tiling window manager (manages windows in tiled/floating/monocle layouts)
+# st    → simple terminal emulator (lightweight, fast, configured via config.h)
+# dmenu → dynamic menu (app launcher — type to filter, Enter to launch)
+emerge -a x11-wm/dwm x11-terms/st x11-misc/dmenu</code></pre>
 
 <h3>First-time config workflow</h3>
 
-<pre><code># Portage installs default savedconfig files here:
+<pre><code># ── Find your savedconfig files ─────────────────────────────────────
+# After the first emerge, Portage copies the default config.h to savedconfig.
+# These are plain C header files you can edit with any text editor.
 ls /etc/portage/savedconfig/x11-wm/dwm-*
 ls /etc/portage/savedconfig/x11-terms/st-*
 ls /etc/portage/savedconfig/x11-misc/dmenu-*
 
-# Edit dwm config to taste:
+# ── Customise ───────────────────────────────────────────────────────
+# Edit the savedconfig to change keybinds, colours, fonts, layouts, etc.
+# This is the suckless philosophy: configuration IS the source code.
 nano /etc/portage/savedconfig/x11-wm/dwm-&lt;version&gt;
 
-# Rebuild with your changes:
+# ── Rebuild with your changes ──────────────────────────────────────
+# Portage reads the savedconfig, compiles dwm with your edits, and installs it.
+# The old binary is replaced — logout/login or restart dwm to see changes.
 emerge -a x11-wm/dwm</code></pre>
 
 <p>Common <code>config.h</code> tweaks for dwm:</p>
@@ -162,54 +191,85 @@ static const unsigned int gappx = 6;</code></pre>
 
 <h3>Applying patches (the suckless way)</h3>
 
-<p>If you need patches beyond what <code>savedconfig</code> handles (e.g. vanitygaps, barpadding):</p>
+<p>If you need patches beyond what <code>savedconfig</code> handles (e.g. vanitygaps, barpadding),
+you can use Portage's <strong>user patches</strong> feature. Portage applies any <code>.patch</code> or
+<code>.diff</code> file it finds in <code>/etc/portage/patches/&lt;category&gt;/&lt;package&gt;/</code> before
+compiling. This is cleaner than patching source manually — the patches are
+reapplied automatically on every emerge.</p>
 
-<pre><code># Keep a local patches directory for reference
+<pre><code># Keep a local copy of your patches for version control
 mkdir -p /root/my-gentoo/patches/dwm
 
-# Option A: patch the savedconfig directly (config-only changes)
-# Option B: use /etc/portage/patches for source-level patches:
+# Option A: edit the savedconfig directly (config-only changes like
+#           keybinds, fonts, colours — no source code changes needed)
+
+# Option B: use /etc/portage/patches for source-level patches.
+# Download patches from https://dwm.suckless.org/patches/ and place them here:
 mkdir -p /etc/portage/patches/x11-wm/dwm
 cp my-patch.diff /etc/portage/patches/x11-wm/dwm/
-emerge -a x11-wm/dwm
-# Portage applies user patches automatically before compile.</code></pre>
+
+# Rebuild — Portage detects the patches, applies them to the source tree,
+# then compiles. If a patch fails to apply (e.g. it's for a different version),
+# the build stops and tells you which hunk failed.
+emerge -a x11-wm/dwm</code></pre>
 
 <h2>4 — Set up ~/.xinitrc</h2>
+
+<p><code>~/.xinitrc</code> is the script that <code>startx</code> runs when you launch X.
+Everything before <code>exec dwm</code> starts as background processes; <code>exec</code> replaces
+the shell with dwm, so when dwm exits, X exits and you're back at the TTY.</p>
 
 <pre><code>cat &gt; ~/.xinitrc &lt;&lt; 'EOF'
 #!/bin/sh
 
 # ── Hardware ──────────────────────────────────────
-xrandr --auto                # set native resolution
+# xrandr --auto detects connected monitors and sets their native resolution.
+xrandr --auto
 
 # ── Input ─────────────────────────────────────────
-setxkbmap us                 # keyboard layout
+# Set keyboard layout. Change "us" to your layout (gb, de, fr, etc.).
+setxkbmap us
 
 # ── Audio (PipeWire as user) ──────────────────────
+# PipeWire must run as your user (not root). Start it in the background.
+# wireplumber is the session manager that handles routing and device policy.
 pipewire &amp;
 wireplumber &amp;
 
 # ── Statusbar (simple example — replace with slstatus or your script)
+# dwm's status bar reads the X root window name. xsetroot -name sets it.
+# This loop updates every 30 seconds with the time and free RAM.
 while true; do
     xsetroot -name "$(date '+%a %b %d  %H:%M')  |  $(awk '/MemAvailable/{printf "%.0fM", $2/1024}' /proc/meminfo) free"
     sleep 30
 done &amp;
 
 # ── Window manager ────────────────────────────────
+# 'exec' replaces this shell process with dwm.
+# When you quit dwm (Mod+Shift+Q), X exits and you return to the TTY.
 exec dwm
 EOF
 
+# Make the script executable (startx won't run it otherwise).
 chmod +x ~/.xinitrc</code></pre>
 
-<p>Start X:</p>
+<p>Start X from the TTY:</p>
 
-<pre><code>startx</code></pre>
+<pre><code># startx reads ~/.xinitrc and launches the X server + your script.
+startx</code></pre>
 
 <h2>5 — GPU acceleration</h2>
 
-<pre><code>emerge -a media-libs/mesa media-libs/vulkan-loader dev-util/vulkan-tools
+<pre><code># ── Mesa / Vulkan ───────────────────────────────────────────────────
+# mesa         → provides OpenGL (radeonsi) and Vulkan (RADV) drivers
+# vulkan-loader → the dispatch library that routes Vulkan API calls
+#                 to the correct driver (RADV for AMD)
+# vulkan-tools → provides vulkaninfo for diagnostics
+emerge -a media-libs/mesa media-libs/vulkan-loader dev-util/vulkan-tools
 
-# Quick test
+# Verify that Vulkan sees your GPU through the RADV driver.
+# If this shows "llvmpipe" instead, the GPU driver isn't loading — check
+# that amdgpu loaded (dmesg | grep amdgpu) and firmware is in place.
 vulkaninfo --summary 2&gt;/dev/null | grep deviceName
 # → AMD Radeon RX 7800 XT (RADV NAVI32)</code></pre>
 
@@ -233,45 +293,87 @@ vulkaninfo --summary 2&gt;/dev/null | grep deviceName
 
 <p>Add picom and dunst to <code>~/.xinitrc</code> before <code>exec dwm</code>:</p>
 
-<pre><code>picom -b &amp;
+<pre><code># picom is a compositor — it adds transparency, shadows, and vsync
+# (eliminates screen tearing). -b runs it in the background (daemon mode).
+picom -b &amp;
+
+# dunst is a notification daemon — desktop apps send notifications via D-Bus
+# and dunst displays them as small popups. Configure in ~/.config/dunst/dunstrc.
 dunst &amp;</code></pre>
 
 <h2>7 — Networking (lightweight)</h2>
 
-<p>With the DWM profile we intentionally disabled NetworkManager. Use <code>dhcpcd</code> for
-wired, or if you need WiFi:</p>
+<p>With the DWM profile we intentionally disabled NetworkManager (it pulls in
+lots of GNOME/polkit dependencies). Use <code>dhcpcd</code> for wired (already set up in
+the base guide), or if you need WiFi:</p>
 
-<pre><code>emerge -a net-wireless/wpa_supplicant
+<pre><code># ── wpa_supplicant — WiFi authentication daemon ─────────────────────
+# Handles WPA/WPA2/WPA3 handshakes with your access point.
+# Works alongside dhcpcd, which handles getting an IP address.
+emerge -a net-wireless/wpa_supplicant
 rc-update add wpa_supplicant default
 
-# Quick connect:
+# wpa_passphrase generates a properly formatted config block with a
+# hashed PSK (pre-shared key). Appending >> adds to the file without
+# overwriting existing network blocks.
 wpa_passphrase "MySSID" "MyPassword" &gt;&gt; /etc/wpa_supplicant/wpa_supplicant.conf
-rc-service wpa_supplicant start</code></pre>
+
+# Start the service immediately (it will also auto-start at next boot
+# because of the rc-update command above).
+rc-service wpa_supplicant start
+
+# Troubleshooting:
+#   wpa_cli status           → check connection state
+#   wpa_cli scan &amp;&amp; wpa_cli scan_results  → scan for networks
+#   cat /var/log/messages | grep wpa       → check logs</code></pre>
 
 <h2>8 — Fonts</h2>
 
-<pre><code># Bitmap classic
+<pre><code># ── Terminus — a clean bitmap font, perfect for terminals ───────────
+# Bitmap fonts render pixel-perfectly at specific sizes (no anti-aliasing
+# needed). Common in suckless setups for speed and clarity.
 emerge -a media-fonts/terminus-font
 
-# Full coverage (emoji, CJK, nerd glyphs)
+# ── Noto / Nerd Fonts (optional, for broader glyph coverage) ───────
+# noto         → Google's "No Tofu" font — covers virtually all Unicode scripts
+# noto-emoji   → colour emoji support
+# nerd-fonts   → patched fonts with icons (Powerline, Font Awesome, etc.)
+#               used by status bars and terminal prompts
 emerge -a media-fonts/noto media-fonts/noto-emoji media-fonts/nerd-fonts</code></pre>
 
-<p>Update the font in your dwm and st <code>savedconfig</code> files, then rebuild:</p>
+<p>After installing fonts, update the font name in your dwm and st <code>savedconfig</code>
+files (the <code>fonts[]</code> array in config.h), then rebuild to apply:</p>
 
-<pre><code>emerge -a x11-wm/dwm x11-terms/st</code></pre>
+<pre><code># Portage reads the savedconfig, compiles with the new font setting,
+# and installs the updated binary. Restart dwm/st to see the change.
+emerge -a x11-wm/dwm x11-terms/st</code></pre>
 
 <h2>9 — DVD playback</h2>
 
-<pre><code># mpv can play DVDs directly
+<pre><code># mpv is a fork of mplayer — lightweight, scriptable, runs from the terminal.
+# dvd:// tells mpv to use the DVD protocol; /dev/sr0 is the optical drive.
+# libdvdcss (installed in the base guide) handles CSS decryption so
+# commercial DVDs can be read.
 mpv dvd:///dev/sr0
 
-# Ensure libdvdcss is installed (done in base guide)</code></pre>
+# Useful mpv controls during playback:
+#   Space    → pause/resume
+#   ←/→      → seek 5s / 10s
+#   j        → cycle subtitles
+#   #        → cycle audio tracks
+#   f        → toggle fullscreen
+#   q        → quit</code></pre>
 
 <h2>10 — Autostart X on login (optional)</h2>
 
-<p>Add to <code>~/.bash_profile</code>:</p>
+<p>If you don't want to type <code>startx</code> every time you log in, add this to
+<code>~/.bash_profile</code>. It only triggers on tty1, so other TTYs stay as text consoles:</p>
 
-<pre><code># Auto-start X on tty1
+<pre><code># ~/.bash_profile is sourced by bash on login shells (i.e. when you log in at a TTY).
+# $DISPLAY is empty when no X server is running.
+# $(tty) returns the current terminal device (e.g. /dev/tty1).
+# 'exec startx' replaces the login shell with startx — when X exits,
+# you're logged out (back to the login prompt), which is the expected behaviour.
 if [[ -z "$DISPLAY" &amp;&amp; "$(tty)" == "/dev/tty1" ]]; then
     exec startx
 fi</code></pre>

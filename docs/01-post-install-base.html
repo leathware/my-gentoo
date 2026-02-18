@@ -83,12 +83,20 @@ chose the KDE path.</p>
 
 <h2>1 — Sync &amp; get the repo</h2>
 
-<pre><code>emerge --sync
+<pre><code># ── Sync the Portage tree ───────────────────────────────────────────
+# emerge --sync downloads the latest package database (ebuilds) from the
+# Gentoo mirrors. This is the equivalent of 'apt update' on Debian — it
+# fetches metadata, not actual packages. Always sync before installing.
+emerge --sync
 
-# Git is not part of the minimal install — install it first
+# ── Install Git ───────────────────────────────────────────────────
+# The minimal install doesn't include git. We need it to clone this repo.
+# -a (--ask) shows what will be installed and asks for confirmation.
 emerge -a dev-vcs/git
 
-# Clone this repo (or scp it to the machine)
+# ── Clone this repo ───────────────────────────────────────────────
+# Downloads the repo with the make.conf templates, setup script, and docs.
+# /root/my-gentoo is a convenient location since you're running as root.
 git clone https://github.com/leathware/my-gentoo.git /root/my-gentoo</code></pre>
 
 <h2>2 — Deploy make.conf &amp; update @world</h2>
@@ -270,7 +278,9 @@ visudo   # uncomment %wheel ALL=(ALL:ALL) ALL</code></pre>
 
 <h2>6 — Networking</h2>
 
-<p>Pick <strong>one</strong> approach:</p>
+<p>Pick <strong>one</strong> approach. NetworkManager is full-featured (GUI applet in KDE,
+auto-connects to known WiFi). dhcpcd is minimal (wired-only by default,
+pairs with wpa_supplicant for WiFi in the DWM guide).</p>
 
 <table>
   <tr><th>Tool</th><th>Install</th><th>Enable</th></tr>
@@ -286,32 +296,63 @@ visudo   # uncomment %wheel ALL=(ALL:ALL) ALL</code></pre>
   </tr>
 </table>
 
-<p>Disable whatever the installer left running if you switch:</p>
+<p>If you're switching from the installer's networking, disable the old service
+first to avoid conflicts (two DHCP clients on the same interface will fight):</p>
 
-<pre><code>rc-update del net.eth0 default   # example</code></pre>
+<pre><code># rc-update del → removes a service from a runlevel (it won't start at boot).
+# net.eth0 is the default interface service from the Gentoo installer.
+# Replace eth0 with your actual interface name (check with: ip link).
+rc-update del net.eth0 default</code></pre>
 
 <h2>7 — Audio — PipeWire on OpenRC</h2>
 
-<pre><code>emerge -a media-video/pipewire media-video/wireplumber
+<pre><code># ── PipeWire + WirePlumber ──────────────────────────────────────────
+# PipeWire is a modern audio (and video) server that replaces PulseAudio.
+# It provides drop-in PulseAudio and JACK compatibility, handles Bluetooth
+# audio, and manages screen capture for Wayland screen sharing.
+#
+# WirePlumber is PipeWire's session manager — it handles policy decisions
+# like which audio device is the default, routing, and permissions.
+emerge -a media-video/pipewire media-video/wireplumber
 
-# PipeWire runs as a user service, not an init daemon.
-# The recommended way on OpenRC is to start it from your session
-# (xinitrc, plasma-session, or a wrapper script).
-# For KDE this happens automatically.
-# For DWM, add to ~/.xinitrc BEFORE exec dwm:
+# PipeWire runs as a USER service, not a system daemon. There's no init
+# script to add to OpenRC. Instead, it starts per-session:
+#
+# For KDE:  Plasma starts PipeWire automatically via XDG autostart
+#           (desktop files in /etc/xdg/autostart/). No action needed.
+#
+# For DWM:  Add these lines to ~/.xinitrc BEFORE 'exec dwm':
 #   pipewire &amp;
 #   wireplumber &amp;</code></pre>
 
 <h2>8 — DVD / Optical drive</h2>
 
-<pre><code>emerge -a app-cdr/cdrtools app-misc/regionset
-# Make sure your user is in the 'cdrom' group (done above).
-# For video DVD playback:
+<pre><code># ── CD/DVD burning and region tools ─────────────────────────────────
+# cdrtools provides cdrecord (burning), mkisofs (create ISO images),
+# and cdda2wav (rip audio CDs). regionset lets you set/query the DVD
+# drive's region code (required for some commercial DVDs).
+emerge -a app-cdr/cdrtools app-misc/regionset
+
+# Make sure your user is in the 'cdrom' group (done in step 5).
+# Without cdrom group membership, the drive device (/dev/sr0) won't
+# be accessible to non-root users.
+
+# ── DVD decryption ────────────────────────────────────────────────
+# libdvdcss decrypts CSS (Content Scramble System) used on commercial
+# DVDs. Without it, VLC/mpv can see the disc but can't read the video.
 emerge -a media-libs/libdvdcss</code></pre>
 
 <h2>9 — Filesystem utilities &amp; misc</h2>
 
-<pre><code>emerge -a sys-fs/e2fsprogs sys-fs/dosfstools sys-fs/ntfs3g
+<pre><code># ── Filesystem tools ───────────────────────────────────────────────
+# e2fsprogs  → ext2/ext3/ext4 filesystem tools (fsck.ext4, mkfs.ext4, tune2fs)
+# dosfstools → FAT/FAT32 tools (needed for the EFI System Partition)
+# ntfs3g     → NTFS read/write support via FUSE (for Windows drives/partitions)
+emerge -a sys-fs/e2fsprogs sys-fs/dosfstools sys-fs/ntfs3g
+
+# ── Archive tools ─────────────────────────────────────────────────
+# unzip  → extract .zip files
+# p7zip  → extract .7z, .rar, and other formats (7z command)
 emerge -a app-arch/unzip app-arch/p7zip</code></pre>
 
 <h2>10 — Understanding circular dependencies</h2>
