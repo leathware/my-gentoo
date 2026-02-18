@@ -100,7 +100,8 @@ emerge -a sys-libs/ncurses sys-devel/flex sys-devel/bison sys-devel/bc dev-libs/
 # Gentoo can have multiple kernel source trees installed side by side.
 # eselect kernel manages which one /usr/src/linux points to.
 eselect kernel list              # shows available source trees
-eselect kernel set 1             # pick the version you want
+# Pick the number matching the version you just installed:
+eselect kernel set 1             # replace '1' with the correct number from the list
 
 # Verify the symlink:
 ls -l /usr/src/linux
@@ -144,7 +145,10 @@ enable/disable kernel features. Navigate with arrow keys, Enter to drill in,
 <pre><code># These settings tell the kernel it's running on an AMD Zen CPU and should
 # use AMD-specific optimizations for scheduling, thermal management, etc.
 Processor type and features ---&gt;
-    Processor family          → (AMD Zen 3/Zen 4/Zen 5 — pick the best match)
+    Processor family          → (pick the highest AMD Zen generation listed;
+                                  most kernels currently show "AMD Zen 3" as the
+                                  latest option — that is correct for your 9800X3D,
+                                  a newer kernel may add Zen 4/5 explicitly)
                                  # Tells GCC to use AMD-specific instruction scheduling
     [*] AMD ACPI2Platform and target IDs
                                  # Lets the kernel talk to AMD platform firmware
@@ -203,10 +207,50 @@ Device Drivers ---&gt;
         [*] AMD SoC firmware loading support
                                            # Loads GPU firmware blobs from /lib/firmware</code></pre>
 
+<h3>Firmware blobs — what they are and why your GPU needs them</h3>
+
+<p>Your GPU is not just a chunk of silicon — it has its own microcontrollers
+(for display, video decoding, power management, etc.) that need small
+programs called <strong>firmware blobs</strong> to function. These are proprietary binary
+files provided by AMD and packaged in Gentoo as
+<code>sys-kernel/linux-firmware</code>. The kernel driver (<code>amdgpu</code>) loads these files
+from your filesystem into the GPU at boot time. <strong>Without them, the GPU
+cannot initialise</strong> — you'd get a black screen or fall back to a basic
+framebuffer with no acceleration.</p>
+
+<pre><code># ── Install the firmware package ────────────────────────────────────
+# This populates /lib/firmware/ with firmware for all supported hardware.
+# It's large (~800 MB installed) but required.
+emerge -a sys-kernel/linux-firmware</code></pre>
+
+<p>After installing, verify the files for your specific GPU are present:</p>
+
+<pre><code># ── Check that the Navi 32 firmware exists ──────────────────────────
+# "Navi 32" is AMD's internal codename for the RX 7800 XT GPU chip.
+# The amdgpu driver looks for files matching this name at load time.
+ls /lib/firmware/amdgpu/navi32_*
+# You should see files like:
+#   navi32_ce.bin      — Constant Engine
+#   navi32_me.bin      — Micro Engine
+#   navi32_mec.bin     — Compute Engine
+#   navi32_pfp.bin     — Pre-Fetch Parser
+#   navi32_rlc.bin     — Run List Controller
+#   navi32_sdma.bin    — System DMA Engine
+#   navi32_smc.bin     — System Management Controller (clocks/fans)
+#   navi32_sos.bin     — Secure OS
+#   navi32_vcn.bin     — Video Core Next (hardware video decode/encode)
+#   ...and possibly more depending on the firmware version.
+#
+# If the command returns "No such file or directory":
+#   → re-emerge linux-firmware and make sure it completed without errors.
+#   → check that /lib/firmware is not empty.</code></pre>
+
 <blockquote>
-<strong>Firmware blobs</strong>: The kernel needs firmware from <code>sys-kernel/linux-firmware</code>.<br>
-Key files for your GPU: <code>amdgpu/navi32_*</code> — make sure they're in
-<code>/lib/firmware/amdgpu/</code>. Without them, the GPU won't initialise.
+<strong>Timing note</strong>: Because AMDGPU is set to <code>[M]</code> (module), the firmware
+files just need to be on disk in <code>/lib/firmware/amdgpu/</code> before the module
+is loaded. If you had built AMDGPU as <code>[*]</code> (built-in), you would also
+need to embed the firmware directly into the kernel image via
+<code>CONFIG_EXTRA_FIRMWARE</code> — the module approach avoids that complexity.
 </blockquote>
 
 <h3>Storage — NVMe + SATA DVD</h3>
@@ -297,7 +341,7 @@ File systems ---&gt;
     Pseudo filesystems ---&gt;
         [*] /proc, /sys, tmpfs, devtmpfs   # Virtual filesystems the OS depends on
 
-# Cgroups and namespaces are used by containerisation (docker, systemd-nspawn)
+# Cgroups and namespaces are used by containerisation (docker, Flatpak sandboxes)
 # and some desktop tools. Safe to enable even if you don't use containers.
 General setup ---&gt;
     [*] Control Group support (cgroups)
@@ -344,6 +388,12 @@ grub-mkconfig -o /boot/grub/grub.cfg
 grep menuentry /boot/grub/grub.cfg</code></pre>
 
 <h2>6 — Reboot &amp; validate</h2>
+
+<blockquote>
+<strong>Before rebooting</strong>: make sure you installed <code>sys-kernel/linux-firmware</code>
+(see the <em>Firmware blobs</em> section above). Without it, your GPU and WiFi
+won't work on the new kernel.
+</blockquote>
 
 <pre><code># ── Reboot into the new kernel ──────────────────────────────────────
 reboot
