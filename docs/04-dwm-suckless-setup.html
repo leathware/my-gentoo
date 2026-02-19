@@ -53,66 +53,11 @@ Your make.conf should already have the <strong>dwm</strong> profile's USE flags 
 
 <hr>
 
-<h2>make.conf — DWM / suckless profile</h2>
-
-<pre><code># /etc/portage/make.conf — DWM / suckless minimal desktop
-# Hardware: AMD Ryzen 9 9800X3D · RX 7800 XT · X870 Taichi Lite · DVD reader
-# Init: OpenRC
-# ------------------------------------------------------------------
-
-# ── Compiler flags (Zen 5) ──────────────────────────────────────────
-# -march=native lets GCC detect the exact µarch at compile time.
-# If you cross-compile or distcc, replace with -march=znver5 (GCC ≥ 14).
-COMMON_FLAGS="-march=native -O2 -pipe"
-CFLAGS="${COMMON_FLAGS}"
-CXXFLAGS="${COMMON_FLAGS}"
-FCFLAGS="${COMMON_FLAGS}"
-FFLAGS="${COMMON_FLAGS}"
-
-# ── CPU FLAGS (inserted by setup-makeconf.sh) ───────────────────────
-CPU_FLAGS_X86="&lt;run cpuid2cpuflags to populate&gt;"
-
-# ── Parallelism (8C / 16T) ─────────────────────────────────────────
-MAKEOPTS="-j16 -l16"
-EMERGE_DEFAULT_OPTS="--jobs=4 --load-average=16 --with-bdeps=y --keep-going"
-
-# ── Portage behaviour ──────────────────────────────────────────────
-FEATURES="candy fixlafiles unmerge-orphans parallel-fetch"
-ACCEPT_LICENSE="-* @FREE @BINARY-REDISTRIBUTABLE"
-ACCEPT_KEYWORDS="amd64"
-
-# ── Hardware ────────────────────────────────────────────────────────
-VIDEO_CARDS="amdgpu radeonsi"
-INPUT_DEVICES="libinput"
-GRUB_PLATFORMS="efi-64"
-
-# ── Locale ──────────────────────────────────────────────────────────
-L10N="en"
-LINGUAS="en"
-LC_MESSAGES=C.utf8
-
-# ── Global USE — DWM suckless minimal ──────────────────────────────
-# X11 only (no Wayland in vanilla suckless tools); PipeWire for audio;
-# savedconfig lets you keep custom suckless config.h patches in portage;
-# strip out everything KDE/GNOME/Qt.
-USE="
-  X
-  dbus elogind
-  alsa pipewire sound-server
-  vulkan opengl vaapi
-  savedconfig
-  dvd dvdread
-  -kde -plasma -qt5 -qt6 -gnome -systemd
-  -bluetooth -networkmanager -telemetry
-"</code></pre>
-
 <blockquote>
-<strong>Why no <code>minimal</code> flag?</strong> You might be tempted to add <code>minimal</code> globally
-to strip packages down. The problem is that many packages interpret
-<code>minimal</code> differently — some disable features that other packages depend on,
-causing USE-flag conflicts at emerge time. It's better to keep your global
-flags clean and use <code>/etc/portage/package.use/</code> to fine-tune individual
-packages (see the section below).
+<strong>Full make.conf reference →</strong>
+<a href="00-make-conf-reference.html">make.conf Master Reference</a> — every setting
+explained, KDE vs DWM comparison, why <code>minimal</code> is not used globally, and
+how to handle USE-flag conflicts with <code>package.use</code>.
 </blockquote>
 
 <hr>
@@ -131,64 +76,20 @@ eselect profile show
 cat /etc/portage/make.conf | grep ^USE
 # Confirm: X, savedconfig, -kde, -plasma, -qt5, -qt6</code></pre>
 
-<h3>Handling USE-flag conflicts with <code>/etc/portage/package.use/</code></h3>
+<h3>Handling USE-flag conflicts</h3>
 
 <p>With a lean make.conf, you'll occasionally hit packages that need a USE flag
-you haven't enabled globally — or that conflict with one you've disabled.
-Portage will stop and tell you exactly what's wrong. The fix is
-<strong>per-package USE overrides</strong> in <code>/etc/portage/package.use/</code>.</p>
+you haven't enabled globally. The quick fix is a per-package override in
+<code>/etc/portage/package.use/</code>. For full details and examples, see the
+<a href="00-make-conf-reference.html#package-use">make.conf Master Reference</a>.</p>
 
-<pre><code># ── The directory layout ────────────────────────────────────────────
-# package.use can be a single file OR a directory of files.
-# Using a directory keeps things organised and easy to remove later.
-ls /etc/portage/package.use/
-# You can name the files anything — pick names that make sense:
-#   /etc/portage/package.use/dwm
-#   /etc/portage/package.use/multimedia
-#   /etc/portage/package.use/zzz-overrides</code></pre>
+<pre><code># Quick example — enable a missing flag for one package:
+echo "app-text/xmlto text" >> /etc/portage/package.use/dwm
 
-<h4>Example: Portage says a package needs a flag you don't have</h4>
-
-<pre><code># Suppose emerge fails with something like:
-#   The following USE changes are necessary to proceed:
-#   &gt;=app-text/xmlto-0.0.28-r10 text
-#
-# This means xmlto needs the "text" USE flag enabled, but your global
-# USE line doesn't include it. Fix it for just that package:
-echo "app-text/xmlto text" &gt;&gt; /etc/portage/package.use/dwm
-
-# Then re-run your emerge command — Portage will now build xmlto
-# with "text" enabled while everything else stays minimal.</code></pre>
-
-<h4>Example: a dependency needs a flag you've globally disabled</h4>
-
-<pre><code># Suppose emerge says:
-#   required use flag: ... qt5 ...
-#   caused by: some-package → some-dep[qt5]
-#
-# Even though you have -qt5 globally, you can enable it for one package:
-echo "x11-libs/some-dep qt5" &gt;&gt; /etc/portage/package.use/dwm
-# Per-package entries override global USE flags.</code></pre>
-
-<h4>The quick way: let Portage suggest fixes</h4>
-
-<pre><code># --autounmask-write tells Portage to write the needed USE changes
-# to a temporary file. You then review and accept them.
+# Or let Portage suggest the fix automatically:
 emerge -a --autounmask-write x11-wm/dwm
-
-# Portage creates a pending change file. Run dispatch-conf to review:
-dispatch-conf
-# Press 'u' to accept each change, or 'z' to skip.
-# The accepted changes are written to /etc/portage/package.use/zz-autounmask.
-
-# Then re-run the emerge:
+dispatch-conf          # review and accept the changes
 emerge -a x11-wm/dwm</code></pre>
-
-<blockquote>
-<strong>Tip</strong>: After a big install session, review what ended up in
-<code>/etc/portage/package.use/</code>. If several packages all needed the same flag,
-consider adding it to your global USE line in make.conf instead.
-</blockquote>
 
 <h2>2 — Install Xorg</h2>
 

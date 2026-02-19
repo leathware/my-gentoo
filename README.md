@@ -44,7 +44,8 @@ env-update && source /etc/profile
 
 | # | Guide | What it covers |
 |---|---|---|
-| 1 | [Post-Install Base](docs/01-post-install-base.html) | make.conf, @world rebuild, services, firmware, user, networking, audio, DVD |
+| 0 | [make.conf Master Reference](docs/00-make-conf-reference.html) | Every make.conf setting explained, KDE vs DWM comparison, package.use guide |
+| 1 | [Post-Install Base](docs/01-post-install-base.html) | @world rebuild, services, firmware, user, networking, audio, DVD |
 | 2 | [Kernel Customization](docs/02-kernel-customization.html) | Building a custom kernel for 9800X3D + 7800 XT (AMDGPU, NVMe, audio, USB, BT) |
 | 3a | [KDE Plasma Setup](docs/03-kde-plasma-setup.html) | Full Plasma desktop, SDDM, Wayland, apps, theming |
 | 3b | [DWM / Suckless Setup](docs/04-dwm-suckless-setup.html) | dwm + st + dmenu, savedconfig workflow, patches, companion tools |
@@ -58,10 +59,11 @@ configs/
 scripts/
   setup-makeconf.sh      # Deploys make.conf + auto-detects CPU flags
 docs/
+  00-make-conf-reference.html     # master make.conf reference (single source of truth)
   01-post-install-base.html
   02-kernel-customization.html
-  03-kde-plasma-setup.html       # includes KDE make.conf
-  04-dwm-suckless-setup.html     # includes DWM make.conf
+  03-kde-plasma-setup.html
+  04-dwm-suckless-setup.html
 ```
 
 ## License

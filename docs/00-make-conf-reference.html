@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>00 — make.conf Master Reference</title>
+<style>
+  :root { --bg: #fff; --fg: #1a1a1a; --muted: #555; --border: #d0d0d0;
+          --code-bg: #f4f4f4; --accent: #4e4187; }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { font-size: 15px; }
+  body { font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+         color: var(--fg); background: var(--bg);
+         max-width: 52rem; margin: 2rem auto; padding: 0 1.5rem;
+         line-height: 1.6; }
+  h1 { font-size: 1.8rem; border-bottom: 2px solid var(--accent); padding-bottom: .4rem; }
+  h2 { font-size: 1.35rem; margin-top: 2rem; color: var(--accent); }
+  h3 { font-size: 1.1rem; margin-top: 1.4rem; }
+  blockquote { border-left: 4px solid var(--accent); margin: 1rem 0;
+               padding: .5rem 1rem; background: #f9f8ff; color: var(--muted); }
+  code { font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+         font-size: .88em; background: var(--code-bg); padding: .15em .35em;
+         border-radius: 3px; }
+  pre { background: var(--code-bg); border: 1px solid var(--border);
+        border-radius: 5px; padding: 1rem; overflow-x: auto;
+        line-height: 1.45; }
+  pre code { background: none; padding: 0; font-size: .85rem; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { border: 1px solid var(--border); padding: .45rem .75rem; text-align: left; }
+  th { background: var(--code-bg); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+  a { color: var(--accent); }
+  .nav { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border);
+         font-size: .9rem; }
+  @media print {
+    body { max-width: 100%; margin: 0; padding: 0; font-size: 11pt; }
+    pre { white-space: pre-wrap; word-break: break-all; border: 1px solid #ccc; }
+    a { color: inherit; text-decoration: none; }
+    h2 { page-break-after: avoid; }
+    pre, table { page-break-inside: avoid; }
+    .nav { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>make.conf Master Reference</h1>
+
+<blockquote>
+This is the <strong>single source of truth</strong> for both make.conf profiles.
+The template files live in <code>configs/kde/make.conf</code> and
+<code>configs/dwm/make.conf</code> — the setup script deploys one of them.
+This document explains every setting, the differences between profiles,
+and how to handle USE-flag conflicts with <code>package.use</code>.
+</blockquote>
+
+<hr>
+
+<h2>What is make.conf?</h2>
+
+<p><code>/etc/portage/make.conf</code> is Portage's main configuration file. Every time
+you run <code>emerge</code>, Portage reads it to decide how to compile packages —
+which CPU to target, how many parallel jobs to run, which optional features
+to enable (USE flags), and what hardware to support. Getting this file
+right is the single most impactful thing you can do on Gentoo.</p>
+
+<!-- ================================================================ -->
+<h2>Common settings (both profiles)</h2>
+
+<p>These settings are identical for KDE and DWM — they describe your
+hardware and build environment, not your desktop choice.</p>
+
+<h3>Compiler flags</h3>
+
+<pre><code>COMMON_FLAGS="-march=native -O2 -pipe"
+CFLAGS="${COMMON_FLAGS}"
+CXXFLAGS="${COMMON_FLAGS}"
+FCFLAGS="${COMMON_FLAGS}"
+FFLAGS="${COMMON_FLAGS}"</code></pre>
+
+<table>
+  <tr><th>Flag</th><th>What it does</th></tr>
+  <tr>
+    <td><code>-march=native</code></td>
+    <td>Tells GCC to detect the exact CPU at compile time and use all
+        available instructions (AVX-512, SSE4.2, etc.). Produces the
+        fastest code <em>for this machine</em>, but the binaries won't run
+        on a different CPU. If you cross-compile or use distcc, replace
+        with <code>-march=znver5</code> (GCC &ge; 14).</td>
+  </tr>
+  <tr>
+    <td><code>-O2</code></td>
+    <td>Optimisation level 2 — the standard safe optimisation. <code>-O3</code> is
+        slightly more aggressive but rarely makes a visible difference
+        and can trigger compiler bugs in some packages.</td>
+  </tr>
+  <tr>
+    <td><code>-pipe</code></td>
+    <td>Uses pipes instead of temp files between compiler stages. Slightly
+        faster compilation; uses a bit more RAM (not an issue with 32+ GB).</td>
+  </tr>
+</table>
+
+<h3>CPU flags</h3>
+
+<pre><code>CPU_FLAGS_X86="aes avx avx2 avx512f avx512dq avx512cd avx512bw avx512vl
+  avx512vbmi avx512vbmi2 f16c fma3 mmx mmxext pclmul popcnt rdrand
+  sha sse sse2 sse3 sse4_1 sse4_2 sse4a ssse3 vpclmulqdq"</code></pre>
+
+<p>These tell Portage which CPU instruction sets your chip supports, so
+packages can use optimised code paths. <strong>Don't hand-edit this line</strong> —
+the setup script runs <code>cpuid2cpuflags</code> to detect them automatically.
+If you need to regenerate:</p>
+
+<pre><code>emerge -a app-portage/cpuid2cpuflags
+cpuid2cpuflags                   # prints the correct line
+# Then paste the output into make.conf</code></pre>
+
+<h3>Parallelism</h3>
+
+<pre><code>MAKEOPTS="-j16 -l16"
+EMERGE_DEFAULT_OPTS="--jobs=4 --load-average=16 --with-bdeps=y --keep-going"</code></pre>
+
+<table>
+  <tr><th>Setting</th><th>What it does</th></tr>
+  <tr>
+    <td><code>MAKEOPTS="-j16 -l16"</code></td>
+    <td><code>-j16</code>: run 16 parallel compile jobs (one per thread on your
+        8C/16T 9800X3D). <code>-l16</code>: don't start new jobs if the system
+        load average exceeds 16 (prevents overloading).</td>
+  </tr>
+  <tr>
+    <td><code>--jobs=4</code></td>
+    <td>Emerge up to 4 <em>packages</em> simultaneously. Each package then uses
+        16 threads internally via MAKEOPTS. This fills idle time when one
+        package is linking (single-threaded).</td>
+  </tr>
+  <tr>
+    <td><code>--with-bdeps=y</code></td>
+    <td>Track build-time dependencies — keeps them installed so rebuilds
+        don't re-download everything.</td>
+  </tr>
+  <tr>
+    <td><code>--keep-going</code></td>
+    <td>If one package fails, keep building others that don't depend on it.</td>
+  </tr>
+</table>
+
+<h3>Portage behaviour</h3>
+
+<pre><code>FEATURES="candy fixlafiles unmerge-orphans parallel-fetch"
+ACCEPT_LICENSE="-* @FREE @BINARY-REDISTRIBUTABLE"
+ACCEPT_KEYWORDS="amd64"</code></pre>
+
+<table>
+  <tr><th>Setting</th><th>What it does</th></tr>
+  <tr>
+    <td><code>candy</code></td>
+    <td>Shows a progress spinner during emerge (cosmetic).</td>
+  </tr>
+  <tr>
+    <td><code>fixlafiles</code></td>
+    <td>Automatically fixes broken <code>.la</code> (libtool) files after installs.</td>
+  </tr>
+  <tr>
+    <td><code>unmerge-orphans</code></td>
+    <td>Removes files from old package versions that aren't in the new one.</td>
+  </tr>
+  <tr>
+    <td><code>parallel-fetch</code></td>
+    <td>Downloads source tarballs for upcoming packages while the current one
+        is compiling.</td>
+  </tr>
+  <tr>
+    <td><code>ACCEPT_LICENSE</code></td>
+    <td>Allow free software and binary-redistributable packages (like
+        <code>linux-firmware</code>). Blocks proprietary-only licenses.</td>
+  </tr>
+  <tr>
+    <td><code>ACCEPT_KEYWORDS="amd64"</code></td>
+    <td>Use stable packages only. Change to <code>~amd64</code> for testing/unstable
+        (not recommended unless you know what you're doing).</td>
+  </tr>
+</table>
+
+<h3>Hardware</h3>
+
+<pre><code>VIDEO_CARDS="amdgpu radeonsi"
+INPUT_DEVICES="libinput"
+GRUB_PLATFORMS="efi-64"</code></pre>
+
+<table>
+  <tr><th>Setting</th><th>What it does</th></tr>
+  <tr>
+    <td><code>VIDEO_CARDS</code></td>
+    <td><code>amdgpu</code> = kernel DRM driver, <code>radeonsi</code> = Mesa OpenGL/Vulkan
+        driver. Both are needed for the RX 7800 XT.</td>
+  </tr>
+  <tr>
+    <td><code>INPUT_DEVICES</code></td>
+    <td><code>libinput</code> is the modern unified input driver for mice, keyboards,
+        and touchpads under both X11 and Wayland.</td>
+  </tr>
+  <tr>
+    <td><code>GRUB_PLATFORMS</code></td>
+    <td>Build GRUB for 64-bit UEFI (not legacy BIOS).</td>
+  </tr>
+</table>
+
+<h3>Locale</h3>
+
+<pre><code>L10N="en"
+LINGUAS="en"
+LC_MESSAGES=C.utf8</code></pre>
+
+<p><code>L10N</code> and <code>LINGUAS</code> control which language translations get installed.
+Setting them to <code>en</code> avoids pulling in every locale's files.
+<code>LC_MESSAGES=C.utf8</code> keeps system messages in English UTF-8.</p>
+
+<!-- ================================================================ -->
+<h2>USE flags — KDE Plasma profile</h2>
+
+<p><strong>Eselect profile:</strong> <code>default/linux/amd64/23.0/desktop/plasma</code></p>
+
+<pre><code>USE="
+  X wayland
+  dbus elogind policykit udisks
+  bluetooth networkmanager
+  pipewire sound-server screencast
+  vulkan opengl vaapi
+  alsa
+  dvd dvdread cdda cdr
+  kde plasma qt6 qt5 widgets declarative qml
+  activities semantic-desktop
+  -gnome -systemd -telemetry
+"</code></pre>
+
+<table>
+  <tr><th>Flag(s)</th><th>Why</th></tr>
+  <tr>
+    <td><code>X wayland</code></td>
+    <td>Plasma 6 defaults to Wayland but some apps still need X11 (XWayland).</td>
+  </tr>
+  <tr>
+    <td><code>dbus elogind</code></td>
+    <td>Inter-process messaging and session/seat management (replaces systemd-logind).</td>
+  </tr>
+  <tr>
+    <td><code>policykit udisks</code></td>
+    <td>Polkit handles privilege prompts (e.g. "enter password to mount").
+        UDisks auto-mounts USB drives in Dolphin.</td>
+  </tr>
+  <tr>
+    <td><code>bluetooth networkmanager</code></td>
+    <td>Full desktop connectivity — Bluetooth devices and a GUI network applet.</td>
+  </tr>
+  <tr>
+    <td><code>pipewire sound-server screencast</code></td>
+    <td>PipeWire as the audio server with PulseAudio compat + screen capture for Wayland.</td>
+  </tr>
+  <tr>
+    <td><code>vulkan opengl vaapi</code></td>
+    <td>GPU acceleration — 3D rendering, hardware video decode.</td>
+  </tr>
+  <tr>
+    <td><code>dvd dvdread cdda cdr</code></td>
+    <td>Optical media support — DVD playback, CD ripping, disc burning.</td>
+  </tr>
+  <tr>
+    <td><code>kde plasma qt6 qt5 widgets declarative qml</code></td>
+    <td>The full KDE/Qt stack. <code>qt5</code> is still needed while some KDE apps
+        haven't ported to Qt6 yet.</td>
+  </tr>
+  <tr>
+    <td><code>activities semantic-desktop</code></td>
+    <td>KDE Activities (virtual workspace groups) and file indexing (Baloo).</td>
+  </tr>
+  <tr>
+    <td><code>-gnome -systemd -telemetry</code></td>
+    <td>Exclude GNOME deps, systemd (we use OpenRC), and telemetry.</td>
+  </tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>USE flags — DWM / suckless profile</h2>
+
+<p><strong>Eselect profile:</strong> <code>default/linux/amd64/23.0/desktop</code> (plain — no KDE/Qt)</p>
+
+<pre><code>USE="
+  X
+  dbus elogind
+  alsa pipewire sound-server
+  vulkan opengl vaapi
+  savedconfig
+  dvd dvdread
+  -kde -plasma -qt5 -qt6 -gnome -systemd
+  -bluetooth -networkmanager -telemetry
+"</code></pre>
+
+<table>
+  <tr><th>Flag(s)</th><th>Why</th></tr>
+  <tr>
+    <td><code>X</code> (no <code>wayland</code>)</td>
+    <td>Vanilla suckless tools (dwm, st, dmenu) are X11-only.</td>
+  </tr>
+  <tr>
+    <td><code>dbus elogind</code></td>
+    <td>Still needed — PipeWire, some apps, and seat management use D-Bus.</td>
+  </tr>
+  <tr>
+    <td><code>alsa pipewire sound-server</code></td>
+    <td>ALSA for kernel-level audio, PipeWire as the userspace sound server.</td>
+  </tr>
+  <tr>
+    <td><code>savedconfig</code></td>
+    <td>Enables Portage's savedconfig feature — saves <code>config.h</code> to
+        <code>/etc/portage/savedconfig/</code> for suckless tools. Your customisations
+        survive package upgrades.</td>
+  </tr>
+  <tr>
+    <td><code>dvd dvdread</code></td>
+    <td>DVD playback support (no burning — add <code>cdda cdr</code> if you need it).</td>
+  </tr>
+  <tr>
+    <td><code>-kde -plasma -qt5 -qt6</code></td>
+    <td>Explicitly strip KDE/Qt from every package. Saves significant
+        compile time and disk space.</td>
+  </tr>
+  <tr>
+    <td><code>-bluetooth -networkmanager</code></td>
+    <td>Keep it lean — use <code>dhcpcd</code> + <code>wpa_supplicant</code> instead
+        (see the <a href="04-dwm-suckless-setup.html">DWM guide</a>).</td>
+  </tr>
+</table>
+
+<blockquote>
+<strong>Why no <code>minimal</code> flag?</strong> The <code>minimal</code> USE flag seems like a good idea
+for a suckless setup, but each package interprets it differently. Some
+disable features that other packages depend on, causing USE-flag conflicts
+at emerge time. It's better to keep your global flags clean and selectively
+strip what you don't want with the negative flags above (<code>-kde</code>,
+<code>-qt5</code>, etc.).
+</blockquote>
+
+<!-- ================================================================ -->
+<h2>Side-by-side comparison</h2>
+
+<table>
+  <tr><th>Setting</th><th>KDE</th><th>DWM</th></tr>
+  <tr><td>Eselect profile</td><td><code>desktop/plasma</code></td><td><code>desktop</code></td></tr>
+  <tr><td>Display protocol</td><td>Wayland + X11</td><td>X11 only</td></tr>
+  <tr><td>Networking</td><td>NetworkManager</td><td>dhcpcd + wpa_supplicant</td></tr>
+  <tr><td>Bluetooth</td><td>Enabled</td><td>Disabled</td></tr>
+  <tr><td>Qt / KDE</td><td>qt5, qt6, kde, plasma</td><td>-qt5, -qt6, -kde, -plasma</td></tr>
+  <tr><td>Window management</td><td>KWin (Plasma)</td><td>dwm (savedconfig)</td></tr>
+  <tr><td>Polkit / UDisks</td><td>Enabled (GUI prompts)</td><td>Not needed</td></tr>
+  <tr><td>Screen capture</td><td>screencast</td><td>Not needed (X11)</td></tr>
+  <tr><td>Optical media</td><td>dvd dvdread cdda cdr</td><td>dvd dvdread</td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>Handling USE-flag conflicts with <code>package.use</code></h2>
+
+<p>Even with a well-tuned make.conf, individual packages sometimes need a
+USE flag you haven't set globally — or conflict with one you've disabled.
+Portage will stop and tell you exactly what's wrong. The fix is
+<strong>per-package USE overrides</strong>.</p>
+
+<h3>How <code>/etc/portage/package.use/</code> works</h3>
+
+<p><code>package.use</code> can be a single file or a <strong>directory of files</strong>. Using a
+directory keeps things organised:</p>
+
+<pre><code>/etc/portage/package.use/
+├── dwm               # overrides for your suckless packages
+├── multimedia         # overrides for media packages
+└── zz-autounmask      # auto-generated by emerge --autounmask-write</code></pre>
+
+<p>Each line has the format:</p>
+
+<pre><code># category/package   flag1 flag2 -flag3
+app-text/xmlto       text
+media-libs/mesa      -vaapi</code></pre>
+
+<p>Per-package entries <strong>override</strong> global USE flags from make.conf.</p>
+
+<h3>Scenario 1 — a package needs a flag you don't have</h3>
+
+<pre><code># Portage says:
+#   The following USE changes are necessary to proceed:
+#   >=app-text/xmlto-0.0.28-r10 text
+#
+# Fix: enable "text" for just that package
+echo "app-text/xmlto text" >> /etc/portage/package.use/dwm
+
+# Re-run your emerge command — it will now succeed.</code></pre>
+
+<h3>Scenario 2 — a dependency needs a flag you've globally disabled</h3>
+
+<pre><code># Portage says:
+#   required use flag: qt5
+#   caused by: some-package → some-dep[qt5]
+#
+# Even though you have -qt5 globally, enable it for just that one dep:
+echo "x11-libs/some-dep qt5" >> /etc/portage/package.use/dwm</code></pre>
+
+<h3>Scenario 3 — let Portage suggest the fixes automatically</h3>
+
+<pre><code># --autounmask-write tells Portage to write the needed changes
+# to a temporary config file for you to review and accept.
+emerge -a --autounmask-write some-package/name
+
+# Review the pending changes:
+dispatch-conf
+# Press 'u' to accept each change, or 'z' to skip.
+# Accepted changes go into /etc/portage/package.use/zz-autounmask.
+
+# Then re-run the emerge:
+emerge -a some-package/name</code></pre>
+
+<h3>Tip: promote repeated flags to global</h3>
+
+<p>After a big install session, run:</p>
+
+<pre><code># See what you've accumulated:
+cat /etc/portage/package.use/*</code></pre>
+
+<p>If several unrelated packages all needed the same flag (e.g. <code>text</code>),
+consider adding it to the global USE line in make.conf instead of
+maintaining many per-package overrides.</p>
+
+<!-- ================================================================ -->
+<h2>Applying changes after editing make.conf</h2>
+
+<p>Whenever you modify make.conf or package.use, rebuild affected packages:</p>
+
+<pre><code># Rebuild everything whose USE flags changed:
+emerge --ask --update --deep --newuse @world
+
+# Clean up orphaned packages:
+emerge --ask --depclean
+
+# Check for broken library links:
+revdep-rebuild
+
+# Refresh the environment:
+env-update && source /etc/profile</code></pre>
+
+<hr>
+
+<div class="nav">
+  <strong>Next →</strong>
+  <a href="01-post-install-base.html">Post-Install Base Setup</a> ·
+  <a href="02-kernel-customization.html">Kernel Customization</a> ·
+  <a href="03-kde-plasma-setup.html">KDE Plasma Setup</a> ·
+  <a href="04-dwm-suckless-setup.html">DWM / Suckless Setup</a>
+</div>
+
+</body>
+</html>
