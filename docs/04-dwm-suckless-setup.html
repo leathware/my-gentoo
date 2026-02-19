@@ -102,10 +102,11 @@ emerge -a x11-wm/dwm</code></pre>
 emerge -a x11-base/xorg-server x11-apps/xinit
 
 # ── X11 utilities used in ~/.xinitrc ────────────────────────────────
-# xrandr     → query/set screen resolution and refresh rate
-# setxkbmap  → set keyboard layout (e.g. us, gb, de)
-# xsetroot   → set the root window name (dwm reads this for its status bar)
-emerge -a x11-apps/xrandr x11-apps/setxkbmap x11-apps/xsetroot
+# xrandr      → query/set screen resolution and refresh rate
+# setxkbmap   → set keyboard layout (e.g. us, gb, de)
+# xsetroot    → set the root window name (dwm reads this for its status bar)
+# xwallpaper  → lightweight wallpaper setter (no feh dependency bloat)
+emerge -a x11-apps/xrandr x11-apps/setxkbmap x11-apps/xsetroot x11-misc/xwallpaper
 
 # ── GPU and input drivers ───────────────────────────────────────────
 # xf86-video-amdgpu is the DDX (Device Dependent X) driver for AMD GPUs.
@@ -250,7 +251,8 @@ vulkaninfo --summary 2&gt;/dev/null | grep deviceName
   <tr><td><strong>slstatus</strong></td><td><code>x11-misc/slstatus</code></td><td>Suckless status bar for dwm (uses savedconfig too)</td></tr>
   <tr><td><strong>slock</strong></td><td><code>x11-misc/slock</code></td><td>Suckless screen locker</td></tr>
   <tr><td><strong>surf</strong></td><td><code>www-client/surf</code></td><td>Suckless webkit browser (minimal)</td></tr>
-  <tr><td><strong>feh</strong></td><td><code>media-gfx/feh</code></td><td>Wallpaper setter, image viewer</td></tr>
+  <tr><td><strong>xwallpaper</strong></td><td><code>x11-misc/xwallpaper</code></td><td>Lightweight wallpaper setter (no ImageMagick deps)</td></tr>
+  <tr><td><strong>feh</strong></td><td><code>media-gfx/feh</code></td><td>Image viewer (alternate wallpaper setter)</td></tr>
   <tr><td><strong>scrot</strong></td><td><code>media-gfx/scrot</code></td><td>Screenshot tool</td></tr>
   <tr><td><strong>ranger</strong></td><td><code>app-misc/ranger</code></td><td>Terminal file manager</td></tr>
   <tr><td><strong>mpv</strong></td><td><code>media-video/mpv</code></td><td>Lightweight media player (DVDs: <code>mpv dvd://</code>)</td></tr>
@@ -261,7 +263,8 @@ vulkaninfo --summary 2&gt;/dev/null | grep deviceName
 <pre><code>emerge -a x11-misc/slstatus x11-misc/slock media-gfx/feh \
   media-gfx/scrot app-misc/ranger media-video/mpv x11-misc/dunst x11-misc/picom</code></pre>
 
-<p>Add picom and dunst to <code>~/.xinitrc</code> before <code>exec dwm</code>:</p>
+<p>Add picom and dunst to <code>~/.xinitrc</code> before <code>exec dwm</code> (already included
+if you used the <code>setup-xinitrc.sh</code> script):</p>
 
 <pre><code># picom is a compositor — it adds transparency, shadows, and vsync
 # (eliminates screen tearing). -b runs it in the background (daemon mode).
@@ -356,6 +359,7 @@ fi</code></pre>
 emerge -a x11-base/xorg-server x11-apps/xinit \
   x11-apps/xrandr x11-apps/setxkbmap x11-apps/xsetroot \
   x11-drivers/xf86-video-amdgpu x11-drivers/xf86-input-libinput \
+  x11-misc/xwallpaper \
   x11-wm/dwm x11-terms/st x11-misc/dmenu x11-misc/slstatus \
   x11-misc/slock x11-misc/picom x11-misc/dunst \
   media-gfx/feh media-gfx/scrot app-misc/ranger media-video/mpv \

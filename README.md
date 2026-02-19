@@ -58,6 +58,7 @@ configs/
   dwm/make.conf          # make.conf template — DWM suckless profile
 scripts/
   setup-makeconf.sh      # Deploys make.conf + auto-detects CPU flags
+  setup-xinitrc.sh       # Generates ~/.xinitrc for DWM (display, input, wallpaper)
 docs/
   00-make-conf-reference.html     # master make.conf reference (single source of truth)
   01-post-install-base.html
