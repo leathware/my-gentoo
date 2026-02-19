@@ -6,7 +6,7 @@
 #   1. Creates ~/Pictures/wallpaper/ if it doesn't exist
 #   2. Copies wallpapers from the repo's wallpaper/ directory
 #   3. Generates ~/.xinitrc configured for:
-#      - 2560x1440 @ 154.85 Hz (xrandr)
+#      - xrandr --auto (custom 1440p @ 154.85 Hz available, commented out)
 #      - Keyboard repeat: 200ms delay, 35 repeats/sec (xset)
 #      - xwallpaper with wall2.png
 #      - PipeWire + WirePlumber audio

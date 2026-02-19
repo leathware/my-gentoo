@@ -186,19 +186,30 @@ emerge -a x11-wm/dwm</code></pre>
 
 <h2>4 — Set up ~/.xinitrc</h2>
 
+<blockquote>
+<strong>Switch to your normal user now.</strong> Sections 1–3 above ran as root
+(emerge needs root). From here on, everything is user-level config —
+log in as the user you created in
+<a href="01-post-install-base.html">post-install-base step 5</a>, or open a
+new TTY and <code>su - youruser</code>.
+</blockquote>
+
 <p><code>~/.xinitrc</code> is the script that <code>startx</code> runs when you launch X.
 Everything before <code>exec dwm</code> starts as background processes; <code>exec</code> replaces
 the shell with dwm, so when dwm exits, X exits and you're back at the TTY.</p>
 
 <p>Use the setup script to generate it automatically:</p>
 
-<pre><code># Run as your normal user (not root).
+<pre><code># The base guide cloned the repo to /root/, which isn't readable by
+# normal users. Clone a copy to your home directory:
+git clone https://github.com/leathware/my-gentoo.git ~/my-gentoo
+
 # This script:
 #   • Creates ~/Pictures/wallpaper/ and copies wallpapers from the repo
 #   • Generates ~/.xinitrc with display, input, wallpaper, and audio settings
 #   • Adds a commented-out autostart block to ~/.bash_profile
 #   • Backs up any existing .xinitrc first
-/root/my-gentoo/scripts/setup-xinitrc.sh</code></pre>
+~/my-gentoo/scripts/setup-xinitrc.sh</code></pre>
 
 <p>The generated <code>.xinitrc</code> does the following (in order):</p>
 
