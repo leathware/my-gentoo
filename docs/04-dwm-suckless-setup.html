@@ -104,8 +104,16 @@ USE="
   dvd dvdread
   -kde -plasma -qt5 -qt6 -gnome -systemd
   -bluetooth -networkmanager -telemetry
-  minimal
 "</code></pre>
+
+<blockquote>
+<strong>Why no <code>minimal</code> flag?</strong> You might be tempted to add <code>minimal</code> globally
+to strip packages down. The problem is that many packages interpret
+<code>minimal</code> differently — some disable features that other packages depend on,
+causing USE-flag conflicts at emerge time. It's better to keep your global
+flags clean and use <code>/etc/portage/package.use/</code> to fine-tune individual
+packages (see the section below).
+</blockquote>
 
 <hr>
 
@@ -121,7 +129,66 @@ eselect profile show
 # These flags control which optional features Portage enables/disables
 # when compiling packages. The DWM profile strips out KDE/Qt/GNOME.
 cat /etc/portage/make.conf | grep ^USE
-# Confirm: X, savedconfig, minimal, -kde, -plasma, -qt5, -qt6</code></pre>
+# Confirm: X, savedconfig, -kde, -plasma, -qt5, -qt6</code></pre>
+
+<h3>Handling USE-flag conflicts with <code>/etc/portage/package.use/</code></h3>
+
+<p>With a lean make.conf, you'll occasionally hit packages that need a USE flag
+you haven't enabled globally — or that conflict with one you've disabled.
+Portage will stop and tell you exactly what's wrong. The fix is
+<strong>per-package USE overrides</strong> in <code>/etc/portage/package.use/</code>.</p>
+
+<pre><code># ── The directory layout ────────────────────────────────────────────
+# package.use can be a single file OR a directory of files.
+# Using a directory keeps things organised and easy to remove later.
+ls /etc/portage/package.use/
+# You can name the files anything — pick names that make sense:
+#   /etc/portage/package.use/dwm
+#   /etc/portage/package.use/multimedia
+#   /etc/portage/package.use/zzz-overrides</code></pre>
+
+<h4>Example: Portage says a package needs a flag you don't have</h4>
+
+<pre><code># Suppose emerge fails with something like:
+#   The following USE changes are necessary to proceed:
+#   &gt;=app-text/xmlto-0.0.28-r10 text
+#
+# This means xmlto needs the "text" USE flag enabled, but your global
+# USE line doesn't include it. Fix it for just that package:
+echo "app-text/xmlto text" &gt;&gt; /etc/portage/package.use/dwm
+
+# Then re-run your emerge command — Portage will now build xmlto
+# with "text" enabled while everything else stays minimal.</code></pre>
+
+<h4>Example: a dependency needs a flag you've globally disabled</h4>
+
+<pre><code># Suppose emerge says:
+#   required use flag: ... qt5 ...
+#   caused by: some-package → some-dep[qt5]
+#
+# Even though you have -qt5 globally, you can enable it for one package:
+echo "x11-libs/some-dep qt5" &gt;&gt; /etc/portage/package.use/dwm
+# Per-package entries override global USE flags.</code></pre>
+
+<h4>The quick way: let Portage suggest fixes</h4>
+
+<pre><code># --autounmask-write tells Portage to write the needed USE changes
+# to a temporary file. You then review and accept them.
+emerge -a --autounmask-write x11-wm/dwm
+
+# Portage creates a pending change file. Run dispatch-conf to review:
+dispatch-conf
+# Press 'u' to accept each change, or 'z' to skip.
+# The accepted changes are written to /etc/portage/package.use/zz-autounmask.
+
+# Then re-run the emerge:
+emerge -a x11-wm/dwm</code></pre>
+
+<blockquote>
+<strong>Tip</strong>: After a big install session, review what ended up in
+<code>/etc/portage/package.use/</code>. If several packages all needed the same flag,
+consider adding it to your global USE line in make.conf instead.
+</blockquote>
 
 <h2>2 — Install Xorg</h2>
 

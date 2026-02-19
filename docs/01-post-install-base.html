@@ -316,25 +316,29 @@ rc-update add chronyd default</code></pre>
 
 <h2>4 — Firmware &amp; microcode</h2>
 
-<pre><code># ── CPU microcode ───────────────────────────────────────────────────
+<pre><code># ── CPU microcode + GPU / networking firmware blobs ─────────────────
 # Microcode is low-level firmware that patches the CPU's internal behaviour.
 # AMD releases updates to fix bugs, security vulnerabilities (like Spectre),
 # and improve stability. The kernel loads it at early boot before anything
 # else runs, so the CPU is patched from the very first moment.
-emerge -a sys-firmware/amd-microcode
-
-# ── GPU / networking firmware blobs ────────────────────────────────
-# Modern hardware (GPU, WiFi, Bluetooth) needs binary firmware "blobs"
-# that the kernel loads at runtime. linux-firmware is a collection of
-# these files. Without them, your RX 7800 XT won't initialise (it needs
-# the amdgpu/navi32_* blobs), and WiFi/BT won't work either.
+#
+# Unlike Intel (which has a separate sys-firmware/intel-microcode package),
+# AMD ships its CPU microcode INSIDE sys-kernel/linux-firmware (in the
+# amd-ucode/ directory). So this single package gives you everything:
+#   • CPU microcode  →  amd-ucode/microcode_amd*.bin
+#   • GPU firmware   →  amdgpu/navi32_* (required for your RX 7800 XT)
+#   • WiFi/BT blobs  →  iwlwifi-*, intel/ibt-* (if you have the Intel card)
 emerge -a sys-kernel/linux-firmware
 
 # ── Rebuild GRUB to include microcode in the boot image ─────────────
 # grub-mkconfig scans /boot for kernel images and generates the GRUB
-# config file. After installing new firmware/microcode, re-run it so
-# the microcode is packed into the initramfs and loaded at boot.
-grub-mkconfig -o /boot/grub/grub.cfg</code></pre>
+# config file. After installing firmware, re-run it so the CPU microcode
+# is packed into the initramfs and loaded at boot.
+grub-mkconfig -o /boot/grub/grub.cfg
+
+# ── Verify microcode will load at next boot ─────────────────────────
+ls /lib/firmware/amd-ucode/
+# Should contain: microcode_amd.bin, microcode_amd_fam19h.bin (or similar)</code></pre>
 
 <h2>5 — User account</h2>
 
