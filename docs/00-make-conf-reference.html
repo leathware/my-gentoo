@@ -119,7 +119,7 @@ cpuid2cpuflags                   # prints the correct line
 <h3>Parallelism</h3>
 
 <pre><code>MAKEOPTS="-j16 -l16"
-EMERGE_DEFAULT_OPTS="--jobs=4 --load-average=16 --with-bdeps=y --keep-going"</code></pre>
+EMERGE_DEFAULT_OPTS="--jobs=4 --load-average=16 --with-bdeps=y --keep-going --autounmask-write"</code></pre>
 
 <table>
   <tr><th>Setting</th><th>What it does</th></tr>
@@ -143,6 +143,15 @@ EMERGE_DEFAULT_OPTS="--jobs=4 --load-average=16 --with-bdeps=y --keep-going"</co
   <tr>
     <td><code>--keep-going</code></td>
     <td>If one package fails, keep building others that don't depend on it.</td>
+  </tr>
+  <tr>
+    <td><code>--autounmask-write</code></td>
+    <td>When a package needs USE-flag or keyword changes, Portage writes
+        the required changes to <code>/etc/portage/package.use/</code> (or
+        <code>package.accept_keywords/</code>) automatically instead of just printing
+        them. You then run <code>dispatch-conf</code> to review and accept each
+        change before re-running emerge. This keeps your system under
+        your control while avoiding manual copy-paste of flag overrides.</td>
   </tr>
 </table>
 
@@ -384,39 +393,35 @@ media-libs/mesa      -vaapi</code></pre>
 
 <p>Per-package entries <strong>override</strong> global USE flags from make.conf.</p>
 
-<h3>Scenario 1 — a package needs a flag you don't have</h3>
+<h3>Scenario 1 — Portage writes the fix for you (default workflow)</h3>
 
-<pre><code># Portage says:
-#   The following USE changes are necessary to proceed:
-#   >=app-text/xmlto-0.0.28-r10 text
-#
-# Fix: enable "text" for just that package
+<p>Because <code>--autounmask-write</code> is in your <code>EMERGE_DEFAULT_OPTS</code>, Portage
+automatically writes needed USE/keyword changes to pending config files
+whenever it hits a conflict. You just need to review and accept them:</p>
+
+<pre><code># Step 1: emerge as normal — if changes are needed, Portage writes them
+emerge -a some-package/name
+# Portage prints: "Autounmask changes written — run dispatch-conf"
+
+# Step 2: review and accept each pending change
+dispatch-conf
+# Press 'u' to accept a change, 'z' to skip it.
+# Accepted changes go into /etc/portage/package.use/zz-autounmask
+
+# Step 3: re-run the emerge
+emerge -a some-package/name</code></pre>
+
+<h3>Scenario 2 — write the override yourself</h3>
+
+<p>If you already know which flag is needed, skip the autounmask dance:</p>
+
+<pre><code># Enable "text" for just one package:
 echo "app-text/xmlto text" >> /etc/portage/package.use/dwm
 
-# Re-run your emerge command — it will now succeed.</code></pre>
+# Override a globally disabled flag for one dependency:
+echo "x11-libs/some-dep qt5" >> /etc/portage/package.use/dwm
 
-<h3>Scenario 2 — a dependency needs a flag you've globally disabled</h3>
-
-<pre><code># Portage says:
-#   required use flag: qt5
-#   caused by: some-package → some-dep[qt5]
-#
-# Even though you have -qt5 globally, enable it for just that one dep:
-echo "x11-libs/some-dep qt5" >> /etc/portage/package.use/dwm</code></pre>
-
-<h3>Scenario 3 — let Portage suggest the fixes automatically</h3>
-
-<pre><code># --autounmask-write tells Portage to write the needed changes
-# to a temporary config file for you to review and accept.
-emerge -a --autounmask-write some-package/name
-
-# Review the pending changes:
-dispatch-conf
-# Press 'u' to accept each change, or 'z' to skip.
-# Accepted changes go into /etc/portage/package.use/zz-autounmask.
-
-# Then re-run the emerge:
-emerge -a some-package/name</code></pre>
+# Re-run emerge — it will now succeed.</code></pre>
 
 <h3>Tip: promote repeated flags to global</h3>
 
