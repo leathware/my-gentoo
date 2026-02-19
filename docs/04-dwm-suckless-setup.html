@@ -190,44 +190,57 @@ emerge -a x11-wm/dwm</code></pre>
 Everything before <code>exec dwm</code> starts as background processes; <code>exec</code> replaces
 the shell with dwm, so when dwm exits, X exits and you're back at the TTY.</p>
 
-<pre><code>cat &gt; ~/.xinitrc &lt;&lt; 'EOF'
-#!/bin/sh
+<p>Use the setup script to generate it automatically:</p>
 
-# ── Hardware ──────────────────────────────────────
-# xrandr --auto detects connected monitors and sets their native resolution.
+<pre><code># Run as your normal user (not root).
+# This script:
+#   • Creates ~/Pictures/wallpaper/ and copies wallpapers from the repo
+#   • Generates ~/.xinitrc with display, input, wallpaper, and audio settings
+#   • Adds a commented-out autostart block to ~/.bash_profile
+#   • Backs up any existing .xinitrc first
+/root/my-gentoo/scripts/setup-xinitrc.sh</code></pre>
+
+<p>The generated <code>.xinitrc</code> does the following (in order):</p>
+
+<pre><code>#!/bin/sh
+
+# ── Display ───────────────────────────────────────
+# Safe default — auto-detect monitors and native resolution.
 xrandr --auto
 
-# ── Input ─────────────────────────────────────────
-# Set keyboard layout. Change "us" to your layout (gb, de, fr, etc.).
-setxkbmap us
+# Uncomment for 1440p @ 154.85 Hz (run 'xrandr' to list your modes first):
+# xrandr --output "$(xrandr | grep ' connected' | head -1 | awk '{print $1}')" --mode 2560x1440 --rate 154.85
 
-# ── Audio (PipeWire as user) ──────────────────────
-# PipeWire must run as your user (not root). Start it in the background.
-# wireplumber is the session manager that handles routing and device policy.
+# ── Input ─────────────────────────────────────────
+setxkbmap us
+xset r rate 200 35        # 200ms delay, 35 chars/sec repeat
+
+# ── Wallpaper ─────────────────────────────────────
+xwallpaper --zoom ~/Pictures/wallpaper/wall2.png
+
+# ── Audio ─────────────────────────────────────────
 pipewire &amp;
 wireplumber &amp;
 
-# ── Statusbar (simple example — replace with slstatus or your script)
-# dwm's status bar reads the X root window name. xsetroot -name sets it.
-# This loop updates every 30 seconds with the time and free RAM.
-while true; do
-    xsetroot -name "$(date '+%a %b %d  %H:%M')  |  $(awk '/MemAvailable/{printf "%.0fM", $2/1024}' /proc/meminfo) free"
-    sleep 30
-done &amp;
+# ── Compositor + notifications ────────────────────
+picom -b &amp;
+dunst &amp;
 
-# ── Window manager ────────────────────────────────
-# 'exec' replaces this shell process with dwm.
-# When you quit dwm (Mod+Shift+Q), X exits and you return to the TTY.
-exec dwm
-EOF
+# ── Status bar ────────────────────────────────────
+slstatus &amp;                # or xsetroot loop fallback
 
-# Make the script executable (startx won't run it otherwise).
-chmod +x ~/.xinitrc</code></pre>
+exec dwm</code></pre>
 
-<p>Start X from the TTY:</p>
+<p>The script also adds this to <code>~/.bash_profile</code> (commented out — uncomment
+when you're ready to auto-start X on login):</p>
 
-<pre><code># startx reads ~/.xinitrc and launches the X server + your script.
-startx</code></pre>
+<pre><code># if [[ -z "$DISPLAY" &amp;&amp; "$(tty)" == "/dev/tty1" ]]; then
+#     exec startx
+# fi</code></pre>
+
+<p>Start X manually from the TTY:</p>
+
+<pre><code>startx</code></pre>
 
 <h2>5 — GPU acceleration</h2>
 

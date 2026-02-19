@@ -67,10 +67,12 @@ cat > "$XINITRC" << 'XINITRC_EOF'
 # startx reads this file and launches X with these settings.
 
 # ── Display ───────────────────────────────────────
-# Set monitor to 2560x1440 at 154.85 Hz refresh rate.
-# Use 'xrandr' without arguments to list available modes.
-xrandr --output "$(xrandr | grep ' connected' | head -1 | awk '{print $1}')" \
-       --mode 2560x1440 --rate 154.85
+# Safe default — auto-detect connected monitors and set native resolution.
+xrandr --auto
+
+# Uncomment the line below for 1440p @ 154.85 Hz once you've confirmed
+# your monitor supports it (run 'xrandr' to list available modes):
+# xrandr --output "$(xrandr | grep ' connected' | head -1 | awk '{print $1}')" --mode 2560x1440 --rate 154.85
 
 # ── Input ─────────────────────────────────────────
 # Keyboard layout — change "us" to your layout (gb, de, fr, etc.).
@@ -119,6 +121,24 @@ exec dwm
 XINITRC_EOF
 
 chmod +x "$XINITRC"
+
+# ── Add autostart to ~/.bash_profile (commented out) ─────────────────
+BASH_PROFILE="$HOME/.bash_profile"
+if ! grep -q 'exec startx' "$BASH_PROFILE" 2>/dev/null; then
+    info "Adding autostart block to $BASH_PROFILE (commented out)"
+    cat >> "$BASH_PROFILE" << 'AUTOSTART_EOF'
+
+# ── Auto-start X on tty1 (uncomment to enable) ───────────────────────
+# Only triggers on tty1 — other TTYs stay as text consoles.
+# 'exec startx' replaces the login shell with startx — when X exits,
+# you're logged out (back to the login prompt).
+# if [[ -z "$DISPLAY" && "$(tty)" == "/dev/tty1" ]]; then
+#     exec startx
+# fi
+AUTOSTART_EOF
+else
+    info "Autostart block already present in $BASH_PROFILE — skipping."
+fi
 
 info "Done! ~/.xinitrc is ready."
 info ""
