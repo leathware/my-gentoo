@@ -249,6 +249,12 @@ when you're ready to auto-start X on login):</p>
 #     exec startx
 # fi</code></pre>
 
+<p>Before launching X, install the daemons that <code>~/.xinitrc</code> starts
+(<code>picom</code>, <code>dunst</code>, and <code>slstatus</code>). Without them, those processes will
+fail silently the first time X launches:</p>
+
+<pre><code>emerge -a x11-misc/picom x11-misc/dunst x11-misc/slstatus</code></pre>
+
 <p>Start X manually from the TTY:</p>
 
 <pre><code>startx</code></pre>
